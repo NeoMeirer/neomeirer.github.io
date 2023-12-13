@@ -1,6 +1,6 @@
 ---
 layout: homepage
-title: "Welcome"
+title: "welcome"
 author: "Jonas"
 permalink: /
 ---

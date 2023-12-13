@@ -1,8 +1,8 @@
 ---
 layout: post
-title: "Lunch - desert"
+title: "desert"
 author: "Jonas"
-tags: Nutrition
+tags: nutrition
 ---
 
 I like to go to bed without feeling full from a heavy evening meal, so I try to eat most of my calories before lunch break ends. This desert has got me covered and is super tasty.
@@ -31,7 +31,7 @@ I like to go to bed without feeling full from a heavy evening meal, so I try to 
 
 ## Nutritional values
 
-- 630 kcal
+- 570 kcal
 - ~10g protein
 
 
