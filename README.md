@@ -1,4 +1,8 @@
-# Website
+# Personal website
+
+Following the template of chesterhow/tale. Thanks for the beatiful simplistic design! 
+
+This is how I use it locally:
 
 ## Installation
 Create a new conda environment: ```conda create -n website```.
@@ -19,6 +23,8 @@ Change the Gemfile to the following:
 source "https://rubygems.org"
 gem "jekyll-remote-theme"
 gem "jekyll-paginate"
+gem "jekyll-feed"
+gem "jekyll-seo-tag"
 ```
 
 Then run:
@@ -41,3 +47,8 @@ $ bundle exec jekyll serve
 ```
 
 And you're all set! Head over to http://127.0.0.1:4000/ to see your site in action.
+
+
+## Deploy on github
+
+Simply create a new branch, e.g., gh-pages. Then go to the github settings > Pages > Branch and select gh-pages as your branch. Done.
