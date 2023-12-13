@@ -1,0 +1,15 @@
+---
+layout: default
+title: "Posts"
+permalink: /posts
+---
+
+<div class="catalogue">
+  {% for post in site.posts %}
+    {% include catalogue_item.html sticky='true' %}
+  {% endfor %}
+
+  {% for post in paginator.posts %}
+    {% include catalogue_item.html %}
+  {% endfor %}
+</div>

@@ -1,24 +1,37 @@
-# Tale
-
-[![Gem Version](https://badge.fury.io/rb/tale.svg)](https://badge.fury.io/rb/tale)
-
-Tale is a minimal Jekyll theme curated for storytellers. Checkout the demo [here](https://chesterhow.github.io/tale/).
-
-![Tale screenshot](http://i.imgur.com/pXZrtmo.png)
-
-## Features
-- Easy installation
-- Compatible with GitHub Pages
-- Responsive design (looks just as good on mobile)
-- Syntax highlighting, with the help of Pygments
-- Markdown and HTML text formatting
-- Pagination of posts
-- Sticky posts
-- Tags
-- Excerpt management
-- [Disqus comments (can be enabled if needed)](#enabling-comments)
+# Website
 
 ## Installation
+Create a new conda environment: ```conda create -n website```.
+
+Now install the necessary software (make sure the install-dir is correct):
+```bash
+conda install -c conda-forge c-compiler compilers cxx-compiler
+conda install -c conda-forge ruby
+gem install bundler
+```
+
+Clone this repo and ```cd``` into the repo.
+
+Change the Gemfile to the following:
+```
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+gem "jekyll-remote-theme"
+gem "jekyll-paginate"
+```
+
+Then run:
+```bash
+bundle install --path /Users/$USER/miniconda3/envs/website/bin/custom_bundler_path
+```
+
+Check successful installation with:
+```bash
+bundle exec jekyll -v
+```
+
+
 There are 3 ways to install this theme
 
 1. Install it as a Ruby Gem (for self-hosted sites)
