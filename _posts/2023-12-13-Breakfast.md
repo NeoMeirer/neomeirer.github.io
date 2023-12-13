@@ -5,20 +5,25 @@ author: "Jonas"
 tags: Nutrition
 ---
 
+6am. Alarm rings. Ready to start the day. For me the morning hours are the time of the day to get stuff done. So naturally I don't want to spend much time thinking about food or preparing it.
+
+
+The easiest for me is to just have a protein shake (+ some extra ingredients) which easily powers me through until lunch.
+
+
 # Morning shake
 
 ## Goal
-- Fast 
-- High protein (it's hard to get enough)
-- Low carb (to not get hungry again soon after)
-
-I usually don't want to spend much time thinking about food in the morning. The easiest for me is to just have a protein shake (+ some extra ingredients) which easily powers me through the morning. 
+- Fast -- *can be prepared the evening before*
+- High protein -- *it's hard for me to get enough*
+- Low carb -- *to not get hungry again soon after*
 
 ## Recipe
 
 ### Prerequisites
 
-- Protein powder mix (I pre-mix in the ratio of 3 cups of pea protien, 2 cups of rice protein and 1 cup of hemp protein)
+- **Protein powder mix**  
+I pre-mix in the ratio of 3 parts pea protien, 2 parts rice protein and 1 part hemp protein
 
 ### Ingredients
 
@@ -27,8 +32,12 @@ I usually don't want to spend much time thinking about food in the morning. The 
 - 1 Tbsp of organic cocoa powder (as natural as possible)
 - 1 tsp of organic ceylon cinnamon 
 - 2g of Creatine
+- Water
 
-### How-to
+## Nutritional values
 
-Mix with water, done. 
+- 260 kcal
+- ~40g of protein
+
+
 
