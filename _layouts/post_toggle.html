@@ -1,0 +1,92 @@
+---
+layout: default
+---
+
+<!--
+    This allows for custom display of an intro text, 
+    followed by sections separated by headings with ## that can be toggled
+-->
+
+<div class="post">
+    <div class="post-info">
+        <span>written by</span>
+        {% if page.author %}
+            {{ page.author }}
+        {% else %}
+            {{ site.author.name }}
+        {% endif %}
+    
+        {% if page.date %}
+          <br>
+          <span>on&nbsp;</span><time datetime="{{ page.date }}">{{ page.date | date: "%B %d, %Y" }}</time>
+        {% endif %}
+    </div>
+  
+    <h1 class="post-title">{{ page.title }}</h1>
+    <div class="post-line"></div>
+  
+    <!-- Section navigation buttons (to be dynamically created) -->
+    <div id="section-nav"></div>
+  
+    <!-- Container for sections -->
+    <div id="content-sections">
+      {{ content }}
+    </div>
+  </div>
+  
+  <div class="pagination">
+    <a href="#" class="top">Top</a>
+  </div>
+
+  <style>
+    .section { display: none; }
+    .active-section { display: block; }
+  </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const contentSections = document.getElementById('content-sections');
+      const firstHeading = contentSections.querySelector('h2');
+      const nav = document.getElementById('section-nav');
+      
+      if (firstHeading) {
+        const introDiv = document.createElement('div');
+        introDiv.id = 'intro';
+        let node = contentSections.firstChild;
+        while (node && node !== firstHeading) {
+          let nextNode = node.nextSibling;
+          introDiv.appendChild(node);
+          node = nextNode;
+        }
+        contentSections.insertBefore(introDiv, firstHeading);
+        contentSections.insertBefore(nav, firstHeading);
+    
+        const headings = contentSections.querySelectorAll('h2');
+        let firstSectionVisible = false; // Flag to track the first section
+        headings.forEach((heading) => {
+          const sectionDiv = document.createElement('div');
+          sectionDiv.classList.add('section');
+          sectionDiv.style.display = (firstSectionVisible ? 'none' : 'block'); // Show only the first section
+          if (!firstSectionVisible) firstSectionVisible = true; // Set flag after processing the first section
+          
+          while (heading.nextSibling && heading.nextSibling.tagName !== 'H2') {
+            sectionDiv.appendChild(heading.nextSibling);
+          }
+          heading.parentNode.insertBefore(sectionDiv, heading);
+          sectionDiv.prepend(heading);
+    
+          const button = document.createElement('button');
+          button.textContent = heading.textContent;
+          button.onclick = function() {
+            document.querySelectorAll('.section').forEach(sec => sec.style.display = 'none');
+            sectionDiv.style.display = 'block';
+          };
+          nav.appendChild(button);
+        });
+      }
+    });
+    </script>
+    
+    
+    
+    

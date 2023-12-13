@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "desert"
+title: "dessert"
 author: "Jonas"
 tags: nutrition
 ---

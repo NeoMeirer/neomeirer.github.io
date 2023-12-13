@@ -36,3 +36,7 @@ paginate_path: "/paginator/page:num/"
 
 # Excludes
 exclude: [ Gemfile, Gemfile.lock, tale.gemspec ]
+
+collections:
+  hidden_posts:
+    output: true
