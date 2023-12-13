@@ -4,30 +4,21 @@ Following the template of chesterhow/tale. Thanks for the beatiful simplistic de
 
 This is how I use it locally:
 
-## Installation
-Create a new conda environment: ```conda create -n website```.
+## Usage
 
-Now install the necessary software:
-```bash
-conda install -c conda-forge c-compiler compilers cxx-compiler
-conda install -c conda-forge ruby
-gem install bundler
-```
+I use devcontainers for the development and for testing changes locally (devcontainer.json is provided).
 
 Clone this repo and ```cd``` into the repo.
 
-Then run:
+First install jekyll.
 ```bash
-bundle install --path /Users/$USER/miniconda3/envs/website/bin/custom_bundler_path
+bundle install
 ```
 
 Check successful installation with:
 ```bash
 bundle exec jekyll -v
 ```
-
-## Usage
-Once you've installed the theme, you're ready to work on your Jekyll site. To start off, I would recommend updating `_config.yml` with your site's details.
 
 To build and serve your site, run:
 
