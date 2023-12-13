@@ -7,7 +7,7 @@ This is how I use it locally:
 ## Installation
 Create a new conda environment: ```conda create -n website```.
 
-Now install the necessary software (make sure the install-dir is correct):
+Now install the necessary software:
 ```bash
 conda install -c conda-forge c-compiler compilers cxx-compiler
 conda install -c conda-forge ruby
@@ -15,17 +15,6 @@ gem install bundler
 ```
 
 Clone this repo and ```cd``` into the repo.
-
-Change the Gemfile to the following:
-```
-# frozen_string_literal: true
-
-source "https://rubygems.org"
-gem "jekyll-remote-theme"
-gem "jekyll-paginate"
-gem "jekyll-feed"
-gem "jekyll-seo-tag"
-```
 
 Then run:
 ```bash
@@ -43,7 +32,7 @@ Once you've installed the theme, you're ready to work on your Jekyll site. To st
 To build and serve your site, run:
 
 ```bash
-$ bundle exec jekyll serve
+bundle exec jekyll serve
 ```
 
 And you're all set! Head over to http://127.0.0.1:4000/ to see your site in action.
