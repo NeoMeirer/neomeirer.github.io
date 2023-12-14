@@ -4,7 +4,7 @@ title: "morning run"
 author: "Jonas"
 ---
 
-Aww yes, that's my favorite. I love starting the day with a good long run. There's something magical about starting the day like that. And trust me, when you hit lunch break, with a big workout and some productive work done, you'll feel amazing! 
+Aww yes, that's my favorite. I love starting the day with a good long run. There's something magical about starting the day like that. And trust me, when you hit lunch break, with a big workout and some productive work already done - *and it's only 12am, what?!*- you'll feel amazing! 
 
 This workout needs a bit of time, so I usually do it on the homeoffice days, which is twice a week. 
 
