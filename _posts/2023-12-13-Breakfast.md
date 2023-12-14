@@ -23,7 +23,8 @@ The easiest for me is to just have a protein shake (+ some extra ingredients) wh
 ### Prerequisites
 
 - **Protein powder mix**  
-I pre-mix in the ratio of 3 parts pea protien, 2 parts rice protein and 1 part hemp protein
+I pre-mix in the ratio of 3 parts pea protien, 2 parts rice protein and 1 part hemp protein  
+(see [here](/hidden_posts/2023-12-14-ProteinPowder.html) why I mix it like this)
 
 ### Ingredients
 
