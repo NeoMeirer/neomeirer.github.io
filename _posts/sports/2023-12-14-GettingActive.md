@@ -5,7 +5,10 @@ author: "Jonas"
 tags: sports
 ---
 
-You're not convinced? Let's get into why you should be moving a lot.
+Physical activity is one of the most powerful things regarding health and happiness in my life. I simply counln't be without, and turns out that's pretty much encoded in our genes. We need movement, elevated heart rate, sweating, exhaustion to biologically function. There are so many good things about it, and I'll probably write more about it in the future. But for now, let's focus on the basics. *Let's get active!*
+
+
+You're not convinced? Let's get into why.
 
 Let's start with a section from a <a href="https://www.mdpi.com/2075-4663/7/5/127" target="_blank">paper</a> I like:
 
