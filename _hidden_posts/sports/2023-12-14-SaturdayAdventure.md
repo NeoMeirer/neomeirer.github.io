@@ -2,7 +2,6 @@
 layout: post
 title: "saturday adventure"
 author: "Jonas"
-tags: sports
 ---
 
 Well before I talk about saturdays, let me mention sundays. I love to spend sundays hanging out with friends, having brunch or getting cozy on the couch with a good book. But believe me, all of that feels 10x better when you start the weekend with an outdoor adventure on saturday morning. And it should be exhausting. The more you push, the better the couch will feel on sunday! 

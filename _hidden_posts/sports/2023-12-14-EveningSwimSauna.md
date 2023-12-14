@@ -2,7 +2,6 @@
 layout: post
 title: "evening swim and sauna"
 author: "Jonas"
-tags: sports
 ---
 
 Ohh yes, time to relax (and well, do a little sport before that to make it extra rewarding). This is my spa evening, giving me time for myself to unwind. I even find the swimming kinda meditative - altough there's also an aspect of willpowertraining to it, since it can be brutally boring if you don't get into this meditative state where it just flows. Well, what doesn't kill you...

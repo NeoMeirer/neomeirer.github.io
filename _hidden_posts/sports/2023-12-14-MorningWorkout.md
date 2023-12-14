@@ -2,7 +2,6 @@
 layout: post
 title: "morning workout"
 author: "Jonas"
-tags: sports
 ---
 
 On the days I go to the office, I like to get a little workout done before leaving the house - just to start the day right. 

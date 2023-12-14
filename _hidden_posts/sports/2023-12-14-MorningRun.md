@@ -2,7 +2,6 @@
 layout: post
 title: "morning run"
 author: "Jonas"
-tags: sports
 ---
 
 Aww yes, that's my favorite. I love starting the day with a good long run. There's something magical about starting the day like that. And trust me, when you hit lunch break, with a big workout and some productive work done, you'll feel amazing! 

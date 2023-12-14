@@ -2,7 +2,6 @@
 layout: post
 title: "lentil hummus"
 author: "Jonas"
-tags: nutrition
 ---
 
 ## Recipe
