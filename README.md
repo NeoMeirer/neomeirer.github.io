@@ -1,6 +1,6 @@
 # Personal website
 
-Following the template of chesterhow/tale. Thanks for the beatiful simplistic design! 
+Following the template of chesterhow/tale. Thanks for the beautiful simplistic design! 
 
 This is how I use it locally:
 
