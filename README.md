@@ -26,8 +26,6 @@ To build and serve your site, run:
 bundle exec jekyll serve
 ```
 
-And you're all set! Head over to http://127.0.0.1:4000/ to see your site in action.
-
 
 ## Deploy on github
 
