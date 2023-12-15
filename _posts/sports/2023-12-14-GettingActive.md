@@ -5,7 +5,7 @@ author: "Jonas"
 tags: sports
 ---
 
-Physical activity is one of the most powerful things regarding health and happiness in my life. I simply counln't be without, and turns out that's pretty much encoded in our genes. We need movement, elevated heart rate, sweating, exhaustion, etc. to biologically function. There are so many good things about it - and I'll probably write more about it in the future - but for now, let's focus on the basics. *Getting active!*
+Physical activity is one of the most powerful things you can do for health and happiness. I simply counln't be without, and turns out that's pretty much encoded in our genes. We need movement, elevated heart rate, sweating, exhaustion, etc. to biologically function. There are so many good things about it - and I'll probably write more about it in the future - but for now, let's focus on the basics. *Getting active!*
 
 Let's start with a section from a <a href="https://www.mdpi.com/2075-4663/7/5/127" target="_blank">paper</a> I like:
 

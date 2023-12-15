@@ -22,11 +22,11 @@ author: "Jonas"
 Part a:
 - Soak the lentils for 2-4 hours
 - afterwards, cook for 15min (until soft)
-- rinse with cold water when done
+- rinse with cold water when done and let water drain
 
 Part b:
-- mix the rest of the ingredients wth a blender
-- add the lentils and blend to desired consistency
+- mix the rest of the ingredients wth a blender  
+- add the lentils (and if you want, blend everything to desired consistency)
 
 
 
