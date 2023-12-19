@@ -38,4 +38,4 @@ After getting up I sit down and take the following readings:
 - [heart rate variability](/hidden_posts/measurements/2023-12-19-HRV.html)
 - [blood pressure](/hidden_posts/measurements/2023-12-19-BloodPressure.html)
 - [heart rate](/hidden_posts/measurements/2023-12-19-HeartRate.html)
-- [temperature](/hidden_posts/measurements/2023-12-19-Temperature.html)
+- [body temperature](/hidden_posts/measurements/2023-12-19-Temperature.html)
