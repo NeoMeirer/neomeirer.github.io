@@ -31,10 +31,10 @@ For everything that I measure you will find more information on what aspects of 
 
 I measure everything I'm tracking first thing in the morning. This is not only scientifically optimal for what I'm tracking, but it also gives me the complete freedom to not have to think about it the rest of the day. 
 
-Here's my protocol:
+Here's my protocol.
 
 
-After gettng up I sit down and take the following readings: 
+After getting up I sit down and take the following readings: 
 - [heart rate variability](/hidden_posts/measurements/2023-12-19-HRV.html)
 - [blood pressure](/hidden_posts/measurements/2023-12-19-BloodPressure.html)
 - [heart rate](/hidden_posts/measurements/2023-12-19-HeartRate.html)
