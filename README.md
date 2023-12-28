@@ -30,3 +30,10 @@ bundle exec jekyll serve
 ## Deploy on github
 
 Simply create a new branch, e.g., gh-pages. Then go to the github settings > Pages > Branch and select gh-pages as your branch. Done.
+
+
+
+My TODOs:
+
+- [ ] learn about markdown syntax (to write posts)
+
