@@ -1,16 +1,16 @@
 # Site settings
-title:          goodlife
+title:          neos life
 description:    "Personal website"
 #baseurl:        "/tale"
-url:            "https://jonasmeirer.github.io"
+url:            "https://neomeirer.github.io"
 
 # Google Analytics
 google_analytics: UA—XXXXXXXX-X
 
 # Author
 author:
-  name:         Jonas Meirer
-  email:        jonasmeirer@gmail.com
+  name:         Neo Meirer
+  email:        blabla@gmail.com
 
 # Build settings
 markdown:       kramdown
