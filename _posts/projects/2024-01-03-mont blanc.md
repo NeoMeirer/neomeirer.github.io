@@ -25,6 +25,5 @@ tags: projects
 - Toilet paper
 - Clothes
 - Towel
-hh
 
 
