@@ -2,7 +2,7 @@
 layout: post
 title: "Krawattendienstag"
 author: "Neo"
-tags: fashion
+tags: contemplations
 ---
 
 ## Was ist der Krawattendienstag?
