@@ -37,4 +37,9 @@ My TODOs:
 
 - [ ] learn about markdown syntax (to write posts properly)
 - [ ] add posts
+- [ ] comment funktion for users? 
+  [ ] post about philosophie 
+  [ ] post drinking and society 
+  [ ] post about sports
+  [ ] add to music: house of the rising sun (withJackPeterson), I love rock n roll, free fallin, boring days; music+video: all of me, autumn leaves, Cigarette Daydreams (maybe new take), Video games, who says; hearthbroken: let her go, riptide  
 
