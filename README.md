@@ -36,7 +36,8 @@ Simply create a new branch, e.g., gh-pages. Then go to the github settings > Pag
 My TODOs:
 
 - [ ] learn about markdown syntax (to write posts properly)
-- [ ] add posts
+- [ ] add posts and blogs + affiliate marketing
 - [ ] comment funktion for users? 
-   
-
+- [ ] Pentomino Spiel mit Hilfe von pygbag formatieren/updaten: cd _pages/Pentomino_Python pygbag . 
+- [ ] change profile picture 
+- [ ] edit contemplations

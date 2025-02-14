@@ -5,8 +5,6 @@ author: "Neo"
 permalink: /
 ---
 
-Hi I'm Neo. 
-
-I'm 17 and unapologetically myself. On this kinda weird website, I'll share random stories from my life and give you a glimpse into my worldview. Have fun exploring!
+Hi I'm Neo and I have a Website now. Apart from being a place for the Pentomino game, I'll share some of my contemplations here.
 
 
