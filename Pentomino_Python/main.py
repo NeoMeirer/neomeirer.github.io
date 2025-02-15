@@ -459,6 +459,8 @@ while running:
         draw_actions(["Mausklick auf Stein: Auswahl", "P: Platzieren Ghost-Stein", "0: Abbrechen Ghost-Stein", "A/D/W/S: Bewegen Ghost-Stein", "R: Drehen", "M: Spiegeln", "Enter: Platzieren-Final"])
     elif draw_phase:
         draw_actions(["Mausklick auf Stein: Auswahl"])
+    else:
+        draw_actions(["Mausklick auf Stein: Auswahl", "R: Drehen", "M: Spiegeln", "P: Platzieren Ghost-Stein"])
     
     for event in pygame.event.get():
         if event.type == pygame.QUIT:

@@ -38,6 +38,6 @@ My TODOs:
 - [ ] learn about markdown syntax (to write posts properly)
 - [ ] add posts and blogs + affiliate marketing
 - [ ] comment funktion for users? 
-- [ ] Pentomino Spiel mit Hilfe von pygbag formatieren/updaten: cd _pages/Pentomino_Python pygbag . 
+- [ ] Pentomino Spiel mit Hilfe von pygbag formatieren/updaten: cd Pentomino_Python pygbag . 
 - [ ] change profile picture 
 - [ ] edit contemplations
