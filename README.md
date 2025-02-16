@@ -26,6 +26,12 @@ To build and serve your site, run:
 bundle exec jekyll serve
 ```
 
+Use if changes are not deployed or in case of bugs
+```bash
+bundle exec jekyll clean
+bundle exec jekyll build
+bundle exec jekyll serve
+```
 
 ## Deploy on github
 
@@ -41,3 +47,4 @@ My TODOs:
 - [ ] Pentomino Spiel mit Hilfe von pygbag formatieren/updaten: cd Pentomino_Python pygbag . 
 - [ ] change profile picture 
 - [ ] edit contemplations
+- [ ] switch: german and english language

@@ -27,7 +27,7 @@ GRAY = (192, 192, 192)
 
 # Initialisierung
 pygame.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)  # ", pygame.SRCALPHA" SRCALPHA für Alpha-Transparenz (Kompatibilität)
 pygame.display.set_caption("Pentomino")
 clock = pygame.time.Clock()
 
@@ -96,10 +96,10 @@ selected_piece = None
 
 def draw_grid():
     for row in range(GRID_ROWS + 1):
-        pygame.draw.line(screen, BLACK, (BOARD_X, BOARD_Y + row * GRID_SIZE),
+        pygame.draw.aaline(screen, BLACK, (BOARD_X, BOARD_Y + row * GRID_SIZE),  # aaline statt line für mögliche höhere Kompatibilität und Qualität (Anti-Aliasing)
                          (BOARD_X + GRID_COLS * GRID_SIZE, BOARD_Y + row * GRID_SIZE))
     for col in range(GRID_COLS + 1):
-        pygame.draw.line(screen, BLACK, (BOARD_X + col * GRID_SIZE, BOARD_Y),
+        pygame.draw.aaline(screen, BLACK, (BOARD_X + col * GRID_SIZE, BOARD_Y),
                          (BOARD_X + col * GRID_SIZE, BOARD_Y + GRID_ROWS * GRID_SIZE))
 
 def draw_pieces():
@@ -287,7 +287,7 @@ def draw_ghost_piece(selected_piece):
 
         # Halbtransparente Darstellung (mit Surface, da pygame.draw.rect kein Alpha unterstützt)
         ghost_surface = pygame.Surface((GRID_SIZE, GRID_SIZE), pygame.SRCALPHA)
-        ghost_surface.fill((0, 0, 0, 30))  # Halbtransparent schwarz
+        ghost_surface.fill((0, 0, 0, 70))  # Halbtransparent schwarz
         screen.blit(ghost_surface, (x, y))
 
         # Umrandung zeichnen
