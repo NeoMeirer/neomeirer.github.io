@@ -456,7 +456,7 @@ while running:
 
     if in_placement_phase:
         draw_ghost_piece(selected_piece)
-        draw_actions(["Mausklick auf Stein: Auswahl", "P: Platzieren Ghost-Stein", "0: Abbrechen Ghost-Stein", "A/D/W/S: Bewegen Ghost-Stein", "R: Drehen", "M: Spiegeln", "Enter: Platzieren-Final"])
+        draw_actions(["Mausklick auf Stein: Auswahl", "P: Platzieren Ghost-Stein", "0: Abbrechen Ghost-Stein", "Pfeiltasten oder W/A/S/D: Bewegen Ghost-Stein", "R: Drehen", "M: Spiegeln", "Enter: Platzieren-Final"])
     elif draw_phase:
         draw_actions(["Mausklick auf Stein: Auswahl"])
     else:
@@ -472,13 +472,13 @@ while running:
             new_pos = None
 
 
-            if event.key == pygame.K_a:
+            if event.key == pygame.K_LEFT or event.key == pygame.K_a:
                 new_pos = (gx - GRID_SIZE, gy)
-            elif event.key == pygame.K_d:
+            elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
                 new_pos = (gx + GRID_SIZE, gy)
-            elif event.key == pygame.K_w:
+            elif event.key == pygame.K_UP or event.key == pygame.K_w:
                 new_pos = (gx, gy - GRID_SIZE)
-            elif event.key == pygame.K_s:
+            elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                 new_pos = (gx, gy + GRID_SIZE)
             if event.key == pygame.K_r:
                 original_shape = selected_piece["shape"][:]
