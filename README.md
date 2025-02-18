@@ -52,9 +52,8 @@ My TODOs:
 - [ ] Feedback Pentomino einbauen: 
         1. ghostpiece entweder durch p erscheinen lassen oder drag&drop benutzen, dazu: schwerpunkt des Steins bestimmen, dann in raster ablegen entsprechend dem Schwerpunkt
         2. das "ready to start" zum spielbeginn statt nur per mausklick auch durch touch ansteuern (Handykompatibilität) -> buttons für 100% touch kompatibilität 
+        3. gezogene und noch zu ziehende Steine besser voneinander abheben (mehr Platz?)
         4. Seitenverhältnisse anpassen, dass keine schwarzen Balken im Fensterrand sind
-        5. gezogene und noch zu ziehende Steine besser voneinander abheben (mehr Platz?)
-
 
 - [ ] Zu Beginn Modus auswählen: Two Player Modus + Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an) 
 - [ ] Ranglistenspiele 
