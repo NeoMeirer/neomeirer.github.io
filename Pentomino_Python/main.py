@@ -522,8 +522,11 @@ while running:
             
                     for square in piece["shape"]:
                         sx, sy = px + square[0] * GRID_SIZE, py + square[1] * GRID_SIZE
+
+                        # Erweitertes Kollisionsrechteck mit einem Rand von einem halben Quadrat
+                        expanded_rect = pygame.Rect(sx - GRID_SIZE // 2, sy - GRID_SIZE // 2, GRID_SIZE + GRID_SIZE, GRID_SIZE + GRID_SIZE)
                         
-                        if pygame.Rect(sx, sy, GRID_SIZE, GRID_SIZE).collidepoint(x, y):
+                        if expanded_rect.collidepoint(x, y):
                             selected_piece = piece
                             pieces.remove(piece)  # Entferne den Stein aus der Auswahl, Ziel: plazierung des Steins neben das Spielfeld
                             
@@ -539,8 +542,8 @@ while running:
                                 draw_phase = False
                                 selected_piece = None
                                 player_turn = 2
-                                break
-                    
+                            
+                            break
             
             else:  # 📌 PLATZIERUNGS-PHASE
                 current_pieces = selected_pieces_p1 if player_turn == 1 else selected_pieces_p2
@@ -552,7 +555,7 @@ while running:
                 
                         for square in piece["shape"]:
                             sx, sy = px + square[0] * GRID_SIZE, py + square[1] * GRID_SIZE
-                            rect = pygame.Rect(sx, sy, GRID_SIZE, GRID_SIZE)
+                            rect = pygame.Rect(sx - GRID_SIZE // 2, sy - GRID_SIZE // 2, GRID_SIZE + GRID_SIZE, GRID_SIZE + GRID_SIZE)
 
                             if rect.collidepoint(x, y):
                                 selected_piece = piece  # Stein gefunden!
