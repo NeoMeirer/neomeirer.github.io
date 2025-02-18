@@ -57,3 +57,26 @@ My TODOs:
 
 - [ ] Zu Beginn Modus auswählen: Two Player Modus + Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an) 
 - [ ] Ranglistenspiele 
+
+ # test/wait if user media interaction required
+    if not platform.window.MM.UME:
+
+        # now make a prompt
+        fnt = pygame.sysfont.SysFont("freesans",  uy(80) )
+        prompt = fnt.render("Ready to start!", True, "blue")
+        pg_bar(track.len)
+        screen.blit(prompt, ( marginx+ ux(80), marginy - uy(10) ) )
+        compose()
+        print("""
+        * Waiting for media user engagement: please click or touch the page *
+        """)
+
+        # Add event listener for touch
+        def touch_event(event):
+            platform.window.MM.UME = True
+
+        platform.window.canvas.addEventListener("touchstart", touch_event)
+        platform.window.canvas.addEventListener("mousedown", touch_event)
+    """)
+        while not platform.window.MM.UME:
+            await asyncio.sleep(.1)
