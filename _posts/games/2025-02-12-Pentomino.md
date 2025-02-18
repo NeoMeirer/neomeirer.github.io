@@ -13,7 +13,7 @@ tags: games
   }
 </style>
 
-<iframe id="pentomino-game" src="/Pentomino_Python/build/web/index.html"></iframe>
+<iframe id="pentomino-game" src="/Pentomino_Python/build/web/index.html" allowfullscreen webkitallowfullscreen mozallowfullscreen></iframe>
 
 <button onclick="toggleFullscreen()">Vollbildmodus</button>
 
