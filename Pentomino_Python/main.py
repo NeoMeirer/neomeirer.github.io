@@ -2,8 +2,6 @@ import pygame
 import sys
 import time
 
-pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN, pygame.KEYUP, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.FINGERDOWN, pygame.FINGERUP])
-
 # Konstanten
 SCREEN_WIDTH, SCREEN_HEIGHT = 2900, 1650
 GRID_SIZE = 70
@@ -447,7 +445,7 @@ while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.FINGERDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 x, y = event.pos
                 if reset_rect and reset_rect.collidepoint(x, y):
                     reset_game()
@@ -515,7 +513,7 @@ while running:
                 if is_valid:
                     ghost_pos = new_pos  # Nur aktualisieren, wenn gültig
 
-        elif event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.FINGERDOWN:
+        elif event.type == pygame.MOUSEBUTTONDOWN:
             x, y = event.pos
             
             if draw_phase:  # ZIEH-PHASE

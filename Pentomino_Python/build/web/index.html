@@ -484,21 +484,21 @@ frameborder="1"
     }
 
     </script>
-    
+
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Simuliere einen Klick auf den Startbildschirm nach einer kurzen Verzögerung (z.B. 1 Sekunde)
-            setTimeout(function() {
-                const canvas = document.querySelector('canvas');
-                const event = new MouseEvent('click', {
-                    'view': window,
-                    'bubbles': true,
-                    'cancelable': true
+                document.addEventListener('DOMContentLoaded', function() {
+                // Simuliere einen Klick auf den Startbildschirm nach einer kurzen Verzögerung (z.B. 1 Sekunde)
+                setTimeout(function() {
+                        const canvas = document.querySelector('canvas');
+                        const event = new MouseEvent('click', {
+                        'view': window,
+                        'bubbles': true,
+                        'cancelable': true
+                        });
+                        canvas.dispatchEvent(event);
+                }, 1000);
                 });
-                canvas.dispatchEvent(event);
-            }, 1000);
-        });
-    </script>
+        </script>
 
 </body>
 </html>
