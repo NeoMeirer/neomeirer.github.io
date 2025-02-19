@@ -12,8 +12,8 @@ BOARD_X, BOARD_Y = round((SCREEN_WIDTH - GRID_COLS * GRID_SIZE) // 2), round((SC
 # Alexanders Farbschema
 WHITE = (211, 215, 207)
 BLACK = (0, 0, 0)
-Burgundy = (126, 0, 0)
-RED = (239, 41, 41)
+BURGUNDY = (126, 0, 0)
+RED = (218, 68, 83)
 DARK_BLUE = (31, 74, 135)
 LIGHT_BLUE = (113, 159, 207)
 DARK_GREEN = (85, 134, 6)
@@ -23,7 +23,8 @@ ORANGE = (252, 175, 62)
 PINK = (173, 127, 168)
 CYAN = (92, 53, 102)
 BROWN = (193, 125, 17)
-GRAY = (85, 87, 83)
+GRAY = (111, 113, 109)
+MINT = (0, 164, 137)
 # Farbe hinzufügen, Änderung Zeile 116, 300 und eventuell 296 (transparente Darstellung)
 
 
@@ -79,7 +80,7 @@ shapes = {
 }
 
 
-colors = [Burgundy, LIGHT_GREEN, YELLOW, RED, BROWN, DARK_BLUE, ORANGE, DARK_GREEN, CYAN, LIGHT_BLUE, GRAY, PINK]
+colors = [BURGUNDY, LIGHT_GREEN, YELLOW, RED, BROWN, DARK_BLUE, ORANGE, DARK_GREEN, CYAN, LIGHT_BLUE, GRAY, PINK]
 
 pieces = []
 num_columns = 6  # Maximal 6 Steine pro Reihe
@@ -113,7 +114,7 @@ def draw_pieces():
         for square in piece["shape"]:
             x, y = piece["pos"]
             rect = pygame.Rect(x + square[0] * GRID_SIZE, y + square[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE)
-            pygame.draw.rect(screen, piece["color"], rect) # statt piece["color"] einfach einheitliche farbe, um die Steine besser zu unterscheiden
+            pygame.draw.rect(screen, MINT, rect) # Steine einheitliche Farbe
             pygame.draw.rect(screen, BLACK, rect, 1)
 
 
@@ -293,11 +294,11 @@ def draw_ghost_piece(selected_piece):
 
         # Halbtransparente Darstellung (mit Surface, da pygame.draw.rect kein Alpha unterstützt)
         ghost_surface = pygame.Surface((GRID_SIZE, GRID_SIZE), pygame.SRCALPHA)
-        ghost_surface.fill((0, 0, 0, 70))  # Halbtransparent schwarz
+        ghost_surface.fill((0, 0, 0, 50))  # Halbtransparent schwarz
         screen.blit(ghost_surface, (x, y))
 
         # Umrandung zeichnen
-        pygame.draw.rect(screen, RED, rect, 1) # Umrandung für bessere Abgrenzung
+        pygame.draw.rect(screen, MINT, rect, 2) # Umrandung für bessere Abgrenzung
         
 def is_piece_inside_board(piece, position):
     """ Prüft, ob das gegebene Stück mit seiner Position im Spielfeld bleibt. """
