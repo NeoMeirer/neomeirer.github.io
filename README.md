@@ -31,21 +31,22 @@ Pentomino Spiel mit Hilfe von pygbag formatieren/updaten
  cd Pentomino_Python 
  pygbag . 
  ```
- Dann Code (Simuliert Mausklick) am Ende des <body>-Tags in der index.html (Pentomino_Python/build/web/index.html) einfügen um "Ready to Start!" Bildschirm automatisch zu übersprigen 
-        <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                // Simuliere einen Klick auf den Startbildschirm nach einer kurzen Verzögerung (z.B. 1 Sekunde)
-                setTimeout(function() {
-                        const canvas = document.querySelector('canvas');
-                        const event = new MouseEvent('click', {
-                        'view': window,
-                        'bubbles': true,
-                        'cancelable': true
-                        });
-                        canvas.dispatchEvent(event);
-                }, 1000);
+
+ Dann Code, der Muasklick simuliert, am Ende des <body>-Tags in der index.html (Pentomino_Python/build/web/index.html) einfügen um "Ready to Start!" Bildschirm automatisch zu übersprigen:
+<script>
+        document.addEventListener('DOMContentLoaded', function() {
+        // Simuliere einen Klick auf den Startbildschirm nach einer kurzen Verzögerung (z.B. 1 Sekunde)
+        setTimeout(function() {
+                const canvas = document.querySelector('canvas');
+                const event = new MouseEvent('click', {
+                'view': window,
+                'bubbles': true,
+                'cancelable': true
                 });
-        </script>
+                canvas.dispatchEvent(event);
+        }, 1000);
+        });
+</script>
 
 
 Use if changes are not deployed or in case of bugs
@@ -64,41 +65,15 @@ Simply create a new branch, e.g., gh-pages. Then go to the github settings > Pag
 My TODOs:
 
 - [ ] learn about markdown syntax (to write posts properly)
-- [ ] add posts and blogs + affiliate marketing
+- [ ] add posts and blogs + affiliate marketing + advertisement 
 - [ ] comment funktion for users? 
-- [ ] change profile picture 
-- [ ] edit contemplations
-- [ ] switch: german and english language (eiheitliche Spraches)
+- [ ] change profile picture? 
+- [ ] add contemplations
+- [ ] switch: german and english language (eiheitliche Sprache)
 
 - [ ] Feedback Pentomino einbauen: 
-        1. ghostpiece entweder durch p erscheinen lassen oder drag&drop benutzen, dazu: schwerpunkt des Steins bestimmen, dann in raster ablegen entsprechend dem Schwerpunkt
-        2. das "ready to start" zum spielbeginn statt nur per mausklick auch durch touch ansteuern (Handykompatibilität) -> buttons für 100% touch kompatibilität 
-        3. gezogene und noch zu ziehende Steine besser voneinander abheben (mehr Platz?)
-        4. Seitenverhältnisse anpassen, dass keine schwarzen Balken im Fensterrand sind 
-        5. Vollbild für Handy + Touch für handy funktioniert nicht, nur für ipad 
-
-- [ ] Zu Beginn Modus auswählen: Two Player Modus + Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an) 
-- [ ] Ranglistenspiele 
-
- # test/wait if user media interaction required
-    if not platform.window.MM.UME:
-
-        # now make a prompt
-        fnt = pygame.sysfont.SysFont("freesans",  uy(80) )
-        prompt = fnt.render("Ready to start!", True, "blue")
-        pg_bar(track.len)
-        screen.blit(prompt, ( marginx+ ux(80), marginy - uy(10) ) )
-        compose()
-        print("""
-        * Waiting for media user engagement: please click or touch the page *
-        """)
-
-        # Add event listener for touch
-        def touch_event(event):
-            platform.window.MM.UME = True
-
-        platform.window.canvas.addEventListener("touchstart", touch_event)
-        platform.window.canvas.addEventListener("mousedown", touch_event)
-    """)
-        while not platform.window.MM.UME:
-            await asyncio.sleep(.1)
+        1. Ergänzung Drag&Drop (Schwerpunkt des Steins bestimmen)
+        2. Buttons: 100% Touch Spielbarkeit
+        3. "Aufgeben"-Button hinzufügen
+        4. Modi: Two Player Modus + Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
+        5. Ranglistenspiele 

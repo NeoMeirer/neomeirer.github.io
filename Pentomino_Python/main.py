@@ -2,27 +2,29 @@ import pygame
 import sys
 import time
 
-# Konstanten
-SCREEN_WIDTH, SCREEN_HEIGHT = 2900, 1650
-GRID_SIZE = 70
-GRID_ROWS, GRID_COLS = 6, 10
-BOARD_X, BOARD_Y = (SCREEN_WIDTH - GRID_COLS * GRID_SIZE) // 2, (SCREEN_HEIGHT - GRID_ROWS * GRID_SIZE // 4) // 2
 
-# Farben
-WHITE = (255, 255, 255)
+# Konstanten
+SCREEN_WIDTH, SCREEN_HEIGHT = 3000, 1800
+GRID_SIZE = min(round(SCREEN_WIDTH // 45), round(SCREEN_HEIGHT // 27))  # Passe die Größe des Gitters an
+GRID_ROWS, GRID_COLS = 6, 10
+BOARD_X, BOARD_Y = round((SCREEN_WIDTH - GRID_COLS * GRID_SIZE) // 2), round((SCREEN_HEIGHT - GRID_ROWS * GRID_SIZE // 4) // 2)
+
+# Alexanders Farbschema
+WHITE = (211, 215, 207)
 BLACK = (0, 0, 0)
-Burgundy = (139, 0, 50)
-RED = (220, 0, 0)
-DARK_BLUE = (0, 0, 200)
-LIGHT_BLUE = (100, 150, 235)
-DARK_GREEN = (0, 180, 0)
-LIGHT_GREEN = (0, 230, 0)
-YELLOW = (255, 255, 0)
-ORANGE = (230, 130, 0)
-PINK = (255, 51, 153)
-CYAN = (0, 255, 255)
-BROWN = (240, 190, 120)
-GRAY = (192, 192, 192)
+Burgundy = (126, 0, 0)
+RED = (239, 41, 41)
+DARK_BLUE = (31, 74, 135)
+LIGHT_BLUE = (113, 159, 207)
+DARK_GREEN = (85, 134, 6)
+LIGHT_GREEN = (138, 226, 52)
+YELLOW = (252, 233, 79)
+ORANGE = (252, 175, 62)
+PINK = (173, 127, 168)
+CYAN = (92, 53, 102)
+BROWN = (193, 125, 17)
+GRAY = (85, 87, 83)
+# Farbe hinzufügen, Änderung Zeile 116, 300 und eventuell 296 (transparente Darstellung)
 
 
 # Initialisierung
@@ -32,9 +34,9 @@ pygame.display.set_caption("Pentomino")
 clock = pygame.time.Clock()
 
 # Schriftart und Größe festlegen
-font_headline = pygame.font.Font(None, 80)  # "None" bedeutet die Standardschriftart, 36 ist die Größe   
-font_player = pygame.font.Font(None, 50)  # "None" bedeutet die Standardschriftart, 36 ist die Größe 
-font_actions = pygame.font.Font(None, 40)  # Schriftart für die Aktionen
+font_headline = pygame.font.Font(None, round(GRID_SIZE * 2))  # "None" bedeutet die Standardschriftart, 36 ist die Größe   
+font_player = pygame.font.Font(None, round(GRID_SIZE))  # "None" bedeutet die Standardschriftart, die Größe wird gerundet
+font = pygame.font.Font(None, round(GRID_SIZE // 1.5))  # Schriftart für die Aktionen
 
 # Farbe für den Text (RGB)
 text_color = (0, 0, 0)  # Black
@@ -49,11 +51,15 @@ headline_rect = headline_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIG
 player1_text = "Player 1"
 player2_text = "Player 2"
 
+# Berechne die Breite des gesamten Textes
+player_text_width = sum(font_player.size(letter)[0] for letter in player1_text)
+
 # Startposition für den ersten Buchstaben
+line_spacing = GRID_SIZE // 2  # Abstand zwischen den Buchstaben
 player1_x = BOARD_X - GRID_SIZE // 2 # links
 player2_x = BOARD_X + GRID_SIZE * GRID_COLS + GRID_SIZE // 2  # rechts
-player_y = BOARD_Y + GRID_SIZE  # Obere Startposition
-line_spacing = 40  # Abstand zwischen den Buchstaben
+player_y = BOARD_Y + (GRID_ROWS * GRID_SIZE) // 2 - player_text_width // 2 - line_spacing  # Vertikal mittig am Spielfeld
+
 
 
 # Spielsteine (Pentomino-Formen, bestehend aus 5 Quadraten)
@@ -83,7 +89,7 @@ start_x = (SCREEN_WIDTH - (BOARD_X // 2 + num_columns * GRID_SIZE * 4)) // 2
 
 for i, (name, shape) in enumerate(shapes.items()):
     x = start_x + (i % num_columns) * GRID_SIZE * 6
-    y = 50 + (i // num_columns) * GRID_SIZE * 4  # Zweite Reihe etwas tiefer
+    y = GRID_SIZE + (i // num_columns) * GRID_SIZE * 4  # Zweite Reihe etwas tiefer
     
     piece = {
         "shape": shape,
@@ -107,19 +113,19 @@ def draw_pieces():
         for square in piece["shape"]:
             x, y = piece["pos"]
             rect = pygame.Rect(x + square[0] * GRID_SIZE, y + square[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE)
-            pygame.draw.rect(screen, piece["color"], rect)
+            pygame.draw.rect(screen, piece["color"], rect) # statt piece["color"] einfach einheitliche farbe, um die Steine besser zu unterscheiden
             pygame.draw.rect(screen, BLACK, rect, 1)
 
 
 def draw_selected_pieces_p1():
     # Berechne die mittige X-Position für die Steine von Spieler 1, rechts neben dem Spielfeld
-    column_spacing = BOARD_X // 3 + GRID_SIZE * 2  # Abstand zwischen den Spalten
+    column_spacing =  GRID_SIZE * 8  # Abstand zwischen den Spalten
     row_spacing = GRID_SIZE * 5  # Abstand zwischen den Reihen
-    start_x = BOARD_X // 3 - GRID_SIZE * 5 // 2  # Links neben dem Spielfeld
+    start_x = BOARD_X - GRID_SIZE * 15  # Links neben dem Spielfeld
     
     # Berechne die mittige Y-Position für die Steine von Spieler 1
     total_height = 1.5 * row_spacing  # Höhe von 3 Reihen
-    start_y = (SCREEN_HEIGHT - total_height) // 2  # Vertikal mittig im Fenster
+    start_y = SCREEN_HEIGHT // 2.5 # gleiche Höhe wie "Pentomino" Text
     
     for i, piece in enumerate(selected_pieces_p1):
         # Berechnung der Spalte (0 = links, 1 = rechts)
@@ -144,15 +150,15 @@ def draw_selected_pieces_p1():
 def draw_selected_pieces_p2():
     # Offset für die Spielsteine neben dem Spielfeld
   
-    column_spacing = BOARD_X // 3 + GRID_SIZE * 2  # Abstand zwischen den Spalten
+    column_spacing = GRID_SIZE * 8  # Abstand zwischen den Spalten
     row_spacing = GRID_SIZE * 5  # Abstand zwischen den Reihen
     
     # Start-X-Position für die erste Spalte (rechts neben dem Spielfeld)
-    start_x = BOARD_X + GRID_COLS * GRID_SIZE + BOARD_X // 3 - GRID_SIZE * 5 // 2
+    start_x = BOARD_X + GRID_COLS * GRID_SIZE + GRID_SIZE * 4  # Rechts neben dem Spielfeld
     
     # Berechnung der vertikalen Zentrierung (3 Reihen hoch)
     total_height = 1.5 * row_spacing  # Höhe von 3 Reihen
-    start_y = (SCREEN_HEIGHT - total_height) // 2  
+    start_y = SCREEN_HEIGHT // 2.5 # gleiche Höhe wie "Pentomino" Text 
 
     for i, piece in enumerate(selected_pieces_p2):
         # Berechnung der Spalte (0 = links, 1 = rechts)
@@ -179,14 +185,14 @@ def draw_actions(actions):
     """ Zeichnet die angegebenen Spiel-Aktionen unterhalb des Spielfelds. """
     start_y = BOARD_Y + GRID_ROWS * GRID_SIZE + 50  # Unterhalb des Spielfelds
     for i, action in enumerate(actions):
-        action_surface = font_actions.render(action, True, text_color)
+        action_surface = font.render(action, True, text_color)
         action_rect = action_surface.get_rect(center=(SCREEN_WIDTH // 2, start_y + i * 40))
         screen.blit(action_surface, action_rect)
 
 def draw_player_turn():
     """ Zeichnet den aktuellen Spieler oben auf dem Bildschirm. """
     player_turn_text = f"Spieler Turn: {player_turn}"
-    player_turn_surface = font_actions.render(player_turn_text, True, text_color)
+    player_turn_surface = font_player.render(player_turn_text, True, text_color)
     player_turn_rect = player_turn_surface.get_rect(center=(SCREEN_WIDTH // 2, BOARD_Y - GRID_SIZE // 2))
     screen.blit(player_turn_surface, player_turn_rect)
 
@@ -195,12 +201,12 @@ reset_rect = None  # Globale Variable für den Reset-Button
 
 def draw_winner(winner_text):
     """ Zeichnet den Gewinner und den Reset-Button auf den Bildschirm. """
-    winner_surface = font_actions.render(winner_text, True, text_color)
-    winner_rect = winner_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4))
+    winner_surface = font_player.render(winner_text, True, text_color)
+    winner_rect = winner_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 5))
     screen.blit(winner_surface, winner_rect)
 
     reset_surface = font_player.render("Reset", True, text_color)
-    reset_rect = reset_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4 + 100))
+    reset_rect = reset_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 5 + GRID_SIZE * 2))
     screen.blit(reset_surface, reset_rect)
 
     return reset_rect
@@ -291,7 +297,7 @@ def draw_ghost_piece(selected_piece):
         screen.blit(ghost_surface, (x, y))
 
         # Umrandung zeichnen
-        pygame.draw.rect(screen, BLACK, rect, 1)
+        pygame.draw.rect(screen, RED, rect, 1) # Umrandung für bessere Abgrenzung
         
 def is_piece_inside_board(piece, position):
     """ Prüft, ob das gegebene Stück mit seiner Position im Spielfeld bleibt. """
@@ -428,12 +434,12 @@ while running:
 
     # Buchstaben untereinander rendern
     for i, letter in enumerate(player1_text):
-        letter_surface = font_player.render(letter, True, text_color)
+        letter_surface = font.render(letter, True, text_color)
         letter_rect = letter_surface.get_rect(center=(player1_x, player_y + i * line_spacing))
         screen.blit(letter_surface, letter_rect)
 
     for i, letter in enumerate(player2_text):
-        letter_surface = font_player.render(letter, True, text_color)
+        letter_surface = font.render(letter, True, text_color)
         letter_rect = letter_surface.get_rect(center=(player2_x, player_y + i * line_spacing))
         screen.blit(letter_surface, letter_rect)
 
@@ -452,7 +458,6 @@ while running:
                     continue
         continue  # Verhindert das Zeichnen der Handlungsoptionen und andere Logik
 
-        
 
     if in_placement_phase:
         draw_ghost_piece(selected_piece)
@@ -585,3 +590,22 @@ while running:
 
 pygame.quit()
 sys.exit()
+
+
+# Neos Farbschema
+'''
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+Burgundy = (139, 0, 50)
+RED = (220, 0, 0)
+DARK_BLUE = (0, 0, 200)
+LIGHT_BLUE = (100, 150, 235)
+DARK_GREEN = (0, 180, 0)
+LIGHT_GREEN = (0, 230, 0)
+YELLOW = (255, 255, 0)
+ORANGE = (230, 130, 0)
+PINK = (255, 51, 153)
+CYAN = (0, 255, 255)
+BROWN = (240, 190, 120)
+GRAY = (192, 192, 192)
+'''
