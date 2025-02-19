@@ -70,6 +70,7 @@ My TODOs:
 - [ ] change profile picture? 
 - [ ] add contemplations
 - [ ] switch: german and english language (eiheitliche Sprache)
+- [ ] change icon
 
 - [ ] Feedback Pentomino einbauen: 
         0. Ladescreen verkürzen
