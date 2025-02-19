@@ -72,8 +72,10 @@ My TODOs:
 - [ ] switch: german and english language (eiheitliche Sprache)
 
 - [ ] Feedback Pentomino einbauen: 
+        0. Ladescreen verkürzen
         1. Ergänzung Drag&Drop (Schwerpunkt des Steins bestimmen)
         2. Buttons: 100% Touch Spielbarkeit
         3. "Aufgeben"-Button hinzufügen
         4. Modi: Two Player Modus + Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
         5. Ranglistenspiele 
+        
