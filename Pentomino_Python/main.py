@@ -12,8 +12,8 @@ BOARD_X, BOARD_Y = round((SCREEN_WIDTH - GRID_COLS * GRID_SIZE) // 2), round((SC
 # Alexanders Farbschema
 WHITE = (211, 215, 207)
 BLACK = (0, 0, 0)
-Burgundy = (126, 0, 0)
-RED = (239, 41, 41)
+BURGUNDY = (126, 0, 0)
+RED = (218, 68, 83)
 DARK_BLUE = (31, 74, 135)
 LIGHT_BLUE = (113, 159, 207)
 DARK_GREEN = (85, 134, 6)
@@ -23,7 +23,8 @@ ORANGE = (252, 175, 62)
 PINK = (173, 127, 168)
 CYAN = (92, 53, 102)
 BROWN = (193, 125, 17)
-GRAY = (85, 87, 83)
+GRAY = (111, 113, 109)
+MINT = (0, 164, 137)
 # Farbe hinzufügen, Änderung Zeile 116, 300 und eventuell 296 (transparente Darstellung)
 
 
@@ -79,7 +80,7 @@ shapes = {
 }
 
 
-colors = [Burgundy, LIGHT_GREEN, YELLOW, RED, BROWN, DARK_BLUE, ORANGE, DARK_GREEN, CYAN, LIGHT_BLUE, GRAY, PINK]
+colors = [BURGUNDY, LIGHT_GREEN, YELLOW, RED, BROWN, DARK_BLUE, ORANGE, DARK_GREEN, CYAN, LIGHT_BLUE, GRAY, PINK]
 
 pieces = []
 num_columns = 6  # Maximal 6 Steine pro Reihe
@@ -596,7 +597,7 @@ sys.exit()
 '''
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-Burgundy = (139, 0, 50)
+BURGUNDY = (139, 0, 50)
 RED = (220, 0, 0)
 DARK_BLUE = (0, 0, 200)
 LIGHT_BLUE = (100, 150, 235)
