@@ -32,7 +32,7 @@ Pentomino Spiel mit Hilfe von pygbag formatieren/updaten
  pygbag . 
  ```
 
- Dann Code, der Muasklick simuliert, am Ende des <body>-Tags in der index.html (Pentomino_Python/build/web/index.html) einfügen um "Ready to Start!" Bildschirm automatisch zu übersprigen:
+ Dann Code, der Mausklick simuliert, am Ende des <body>-Tags in der index.html (Pentomino_Python/build/web/index.html) einfügen um "Ready to Start!" Bildschirm automatisch zu übersprigen:
 <script>
         document.addEventListener('DOMContentLoaded', function() {
         // Simuliere einen Klick auf den Startbildschirm nach einer kurzen Verzögerung (z.B. 1 Sekunde)
@@ -79,4 +79,3 @@ My TODOs:
         3. "Aufgeben"-Button hinzufügen
         4. Modi: Two Player Modus + Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
         5. Ranglistenspiele 
-        

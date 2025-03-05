@@ -25,7 +25,7 @@ CYAN = (92, 53, 102)
 BROWN = (193, 125, 17)
 GRAY = (111, 113, 109)
 MINT = (0, 164, 137)
-# Farbe hinzufügen, Änderung Zeile 116, 300 und eventuell 296 (transparente Darstellung)
+# Wenn Farbänderung: Änderung Zeile 116, 300 und 296 (transparente Darstellung)
 
 
 # Initialisierung
@@ -389,6 +389,7 @@ def investigate_Game_over():
                 for x in range(BOARD_X, BOARD_X + GRID_COLS * GRID_SIZE, GRID_SIZE):
                     for y in range(BOARD_Y, BOARD_Y + GRID_ROWS * GRID_SIZE, GRID_SIZE):
                         if is_piece_inside_board(piece, (x, y)) and not is_piece_overlapping(piece, (x, y)):
+                            piece["shape"] = original_shape[:] # Setze die ursprüngliche Form zurück
                             return False  # Es gibt eine gültige Position, das Spiel ist nicht vorbei
                 rotate_piece(piece)
             mirror_piece(piece)

@@ -48,7 +48,7 @@ Zu Beginn werden die Spielsteine abwechselnd gezogen. Hier fängt Player 1 an. P
 3. Wiederhole die Schritte 1 und 2, bis alle Spielsteine verteilt sind.
 
 ## 2. Platzierphase
-Die Spieler legen abwechselnd einen ihrer Spielsteine auf das Spielfeld. Dabei ist es egal, wo die Steine auf dem Spielfeld platziert werden, man darf nur keinen anderen Spielstein bedecken. Es beginnt derjenige Spieler mit dem Legen, der nicht begonnen hat. (Hier Player 2)
+Die Spieler legen abwechselnd einen ihrer Spielsteine auf das Spielfeld. Dabei ist es egal, wo die Steine auf dem Spielfeld platziert werden, man darf nur keinen anderen Spielstein bedecken. Es beginnt derjenige Spieler mit dem Legen, der nicht begonnen hat zu ziehen. (Hier Player 2)
 
 ### Schritte:
 1. Player 2 wählt einen Spielstein aus und platziert ihn auf dem Spielfeld.
