@@ -75,7 +75,4 @@ My TODOs:
         2. Ranglistenspiele 
 
 
-git add .
-git commit -m "mini-debug"
-git push
-```
+
