@@ -110,8 +110,7 @@ drag_start_pos = None
 drag_button_down = False
 drag_mouse_pos = None  # Aktuelle Mausposition während des Drag-Vorgangs
 control_rects = {}  # Touch/Maus-Buttons (Rotate/Mirror/Cancel/Place)
-_last_touch_tick = -1000
-_last_touch_pos = None
+_prefer_mouse_events = False
 
 def get_pointer_pos(event):
     """Vereinheitlicht Maus- und Touch-Events (FINGER*) auf Pixel-Koordinaten."""
@@ -120,33 +119,17 @@ def get_pointer_pos(event):
         ey = float(event.y)
         # Üblicherweise sind FINGER-Koordinaten normalisiert [0..1]. Manche Backends liefern bereits Pixel.
         if 0.0 <= ex <= 1.0 and 0.0 <= ey <= 1.0:
-            w, h = pygame.display.get_window_size()
-            if not w or not h:
-                w, h = screen.get_size()
+            w, h = screen.get_size()
             return int(ex * w), int(ey * h)
         return int(ex), int(ey)
-    return event.pos
-
-def _record_touch_event(event):
-    global _last_touch_tick, _last_touch_pos
-    _last_touch_tick = pygame.time.get_ticks()
-    _last_touch_pos = get_pointer_pos(event)
-
-def _is_synthetic_mouse_event(event):
-    """True, wenn ein Maus-Event sehr wahrscheinlich nur ein synthetisches Duplikat des letzten Touch-Events ist."""
-    if _last_touch_pos is None:
-        return False
-    now = pygame.time.get_ticks()
-    if now - _last_touch_tick > 120:
-        return False
-    if not hasattr(event, "pos"):
-        return False
     mx, my = event.pos
-    tx, ty = _last_touch_pos
-    threshold = max(30, GRID_SIZE // 2)
-    dx = mx - tx
-    dy = my - ty
-    return (dx * dx + dy * dy) <= (threshold * threshold)
+    # In manchen Umgebungen (z.B. Web/Canvas) unterscheiden sich Window- und Surface-Koordinaten.
+    win_w, win_h = pygame.display.get_window_size()
+    surf_w, surf_h = screen.get_size()
+    if win_w and win_h and (win_w != surf_w or win_h != surf_h):
+        mx = int(mx * surf_w / win_w)
+        my = int(my * surf_h / win_h)
+    return mx, my
 
 def is_point_on_board(x, y):
     return BOARD_X <= x < BOARD_X + GRID_COLS * GRID_SIZE and BOARD_Y <= y < BOARD_Y + GRID_ROWS * GRID_SIZE
@@ -671,10 +654,17 @@ while running:
         reset_rect = draw_winner(msg)
         pygame.display.flip()
         go_events = pygame.event.get()
+        mouse_types = (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP)
+        finger_types = (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP)
+        if any(e.type == pygame.MOUSEBUTTONDOWN for e in go_events):
+            _prefer_mouse_events = True
+        go_has_finger = any(e.type in finger_types for e in go_events)
         for event in go_events:
-            if event.type in (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP):
-                _record_touch_event(event)
-            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP) and _is_synthetic_mouse_event(event):
+            # Wenn wir Maus-Events beobachten, ignorieren wir alle Finger-Events dauerhaft (pygbag/mobile Browser).
+            if _prefer_mouse_events and event.type in finger_types:
+                continue
+            # Wenn kein Maus-Input vorhanden ist, nutzen wir Finger-Events und ignorieren Maus komplett.
+            if (not _prefer_mouse_events) and go_has_finger and event.type in mouse_types:
                 continue
             if event.type == pygame.QUIT:
                 running = False
@@ -703,10 +693,15 @@ while running:
     surrender_rect = draw_surrender_button() if not draw_phase else None
 
     raw_events = pygame.event.get()
+    mouse_types = (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP)
+    finger_types = (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP)
+    if any(e.type == pygame.MOUSEBUTTONDOWN for e in raw_events):
+        _prefer_mouse_events = True
+    has_finger = any(e.type in finger_types for e in raw_events)
     for event in raw_events:
-        if event.type in (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP):
-            _record_touch_event(event)
-        elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP) and _is_synthetic_mouse_event(event):
+        if _prefer_mouse_events and event.type in finger_types:
+            continue
+        if (not _prefer_mouse_events) and has_finger and event.type in mouse_types:
             continue
 
         if event.type == pygame.QUIT:
