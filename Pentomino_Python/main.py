@@ -110,13 +110,43 @@ drag_start_pos = None
 drag_button_down = False
 drag_mouse_pos = None  # Aktuelle Mausposition während des Drag-Vorgangs
 control_rects = {}  # Touch/Maus-Buttons (Rotate/Mirror/Cancel/Place)
+_last_touch_tick = -1000
+_last_touch_pos = None
 
 def get_pointer_pos(event):
     """Vereinheitlicht Maus- und Touch-Events (FINGER*) auf Pixel-Koordinaten."""
     if event.type in (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP):
-        w, h = screen.get_size()
-        return int(event.x * w), int(event.y * h)
+        ex = float(event.x)
+        ey = float(event.y)
+        # Üblicherweise sind FINGER-Koordinaten normalisiert [0..1]. Manche Backends liefern bereits Pixel.
+        if 0.0 <= ex <= 1.0 and 0.0 <= ey <= 1.0:
+            w, h = pygame.display.get_window_size()
+            if not w or not h:
+                w, h = screen.get_size()
+            return int(ex * w), int(ey * h)
+        return int(ex), int(ey)
     return event.pos
+
+def _record_touch_event(event):
+    global _last_touch_tick, _last_touch_pos
+    _last_touch_tick = pygame.time.get_ticks()
+    _last_touch_pos = get_pointer_pos(event)
+
+def _is_synthetic_mouse_event(event):
+    """True, wenn ein Maus-Event sehr wahrscheinlich nur ein synthetisches Duplikat des letzten Touch-Events ist."""
+    if _last_touch_pos is None:
+        return False
+    now = pygame.time.get_ticks()
+    if now - _last_touch_tick > 120:
+        return False
+    if not hasattr(event, "pos"):
+        return False
+    mx, my = event.pos
+    tx, ty = _last_touch_pos
+    threshold = max(30, GRID_SIZE // 2)
+    dx = mx - tx
+    dy = my - ty
+    return (dx * dx + dy * dy) <= (threshold * threshold)
 
 def is_point_on_board(x, y):
     return BOARD_X <= x < BOARD_X + GRID_COLS * GRID_SIZE and BOARD_Y <= y < BOARD_Y + GRID_ROWS * GRID_SIZE
@@ -437,6 +467,25 @@ def draw_dragging_piece(piece, mouse_pos, snapped_pos):
         outline_color = DARK_GREEN if (snapped_pos and is_valid) else RED
         pygame.draw.rect(screen, outline_color, rect, 2)
 
+def get_touch_control_rects():
+    """Berechnet die Button-Rects für Rotate/Mirror (ohne zu zeichnen)."""
+    button_w = GRID_SIZE * 6
+    button_h = GRID_SIZE * 2
+    gap = GRID_SIZE
+    y = SCREEN_HEIGHT - button_h - GRID_SIZE
+    labels = ["rotate", "mirror"]
+    total_w = len(labels) * button_w + (len(labels) - 1) * gap
+    sx = SCREEN_WIDTH // 2 - total_w // 2
+    return {label: pygame.Rect(sx + i * (button_w + gap), y, button_w, button_h) for i, label in enumerate(labels)}
+
+def get_surrender_rect():
+    """Berechnet das Surrender-Button-Rect (ohne zu zeichnen)."""
+    button_w = GRID_SIZE * 5
+    button_h = GRID_SIZE * 2
+    x = SCREEN_WIDTH - button_w - GRID_SIZE
+    y = GRID_SIZE
+    return pygame.Rect(x, y, button_w, button_h)
+
 def draw_touch_controls():
     """Zeichnet große Buttons für Touch/Maus (Rotation/Spiegeln/Abbrechen/Platzieren)."""
     if not selected_piece:
@@ -593,7 +642,6 @@ selected_pieces_p1 = []  # Gespeicherte Steine von Spieler 1
 selected_pieces_p2 = []  # Gespeicherte Steine von Spieler 2
 
 start_time = time.time()
-_last_finger_tick = 0  # Zeitstempel des letzten FINGER-Events (Touch-Deduplizierung)
 surrendered = False
 
 while running:
@@ -622,15 +670,15 @@ while running:
         msg = f"Player {player_turn} surrendered!" if surrendered else f"Player {player_turn} hat verloren!"
         reset_rect = draw_winner(msg)
         pygame.display.flip()
-        for event in pygame.event.get():
+        go_events = pygame.event.get()
+        for event in go_events:
+            if event.type in (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP):
+                _record_touch_event(event)
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP) and _is_synthetic_mouse_event(event):
+                continue
             if event.type == pygame.QUIT:
                 running = False
             elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
-                now = pygame.time.get_ticks()
-                if event.type in (pygame.FINGERDOWN,):
-                    _last_finger_tick = now
-                elif now - _last_finger_tick < 80:
-                    continue
                 x, y = get_pointer_pos(event)
                 if reset_rect and reset_rect.collidepoint(x, y):
                     reset_game()
@@ -653,32 +701,32 @@ while running:
 
     control_rects = draw_touch_controls() if not draw_phase else {}
     surrender_rect = draw_surrender_button() if not draw_phase else None
-    
-    for event in pygame.event.get():
+
+    raw_events = pygame.event.get()
+    for event in raw_events:
+        if event.type in (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP):
+            _record_touch_event(event)
+        elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP) and _is_synthetic_mouse_event(event):
+            continue
+
         if event.type == pygame.QUIT:
             running = False
 
         elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
-            # Touch-Deduplizierung: SDL2 erzeugt oft FINGER + MOUSE für denselben Touch
-            now = pygame.time.get_ticks()
-            if event.type in (pygame.FINGERDOWN,):
-                _last_finger_tick = now
-            elif now - _last_finger_tick < 80:
-                continue  # Synthetisches MOUSE-Event nach FINGER-Event ignorieren
-
             x, y = get_pointer_pos(event)
 
-            # Surrender-Button
-            if surrender_rect and surrender_rect.collidepoint(x, y):
+            # Surrender-Button (prüft aktuellen State, nicht gezeichnete Rects)
+            if not draw_phase and get_surrender_rect().collidepoint(x, y):
                 surrendered = True
                 continue
 
-            # Touch-Buttons (auch mit Maus klickbar)
-            if control_rects:
-                if control_rects.get("rotate") and control_rects["rotate"].collidepoint(x, y):
+            # Touch-Buttons: prüft selected_piece LIVE statt stale control_rects
+            if selected_piece and not draw_phase:
+                touch_rects = get_touch_control_rects()
+                if touch_rects["rotate"].collidepoint(x, y):
                     try_transform_selected(rotate_piece)
                     continue
-                if control_rects.get("mirror") and control_rects["mirror"].collidepoint(x, y):
+                if touch_rects["mirror"].collidepoint(x, y):
                     try_transform_selected(mirror_piece)
                     continue
 
@@ -788,11 +836,6 @@ while running:
                     ghost_pos = new_pos  # Nur aktualisieren, wenn gültig
 
         elif event.type in (pygame.MOUSEMOTION, pygame.FINGERMOTION):
-            now = pygame.time.get_ticks()
-            if event.type in (pygame.FINGERMOTION,):
-                _last_finger_tick = now
-            elif now - _last_finger_tick < 80:
-                continue
             x, y = get_pointer_pos(event)
 
             if drag_button_down and drag_candidate_piece and not dragging and drag_start_pos:
@@ -822,11 +865,6 @@ while running:
                     ghost_pos = None
 
         elif event.type in (pygame.MOUSEBUTTONUP, pygame.FINGERUP):
-            now = pygame.time.get_ticks()
-            if event.type in (pygame.FINGERUP,):
-                _last_finger_tick = now
-            elif now - _last_finger_tick < 80:
-                continue
             if drag_button_down:
                 drag_button_down = False
                 drag_candidate_piece = None
