@@ -100,6 +100,56 @@ for i, (name, shape) in enumerate(shapes.items()):
     pieces.append(piece)
 
 selected_piece = None 
+dragging = False
+dragging_piece = None
+drag_anchor = (0, 0)  # (shape_x, shape_y) des Quadrats, das beim Drag "gegriffen" wurde
+drag_candidate_piece = None
+drag_candidate_anchor = (0, 0)
+drag_start_pos = None
+drag_button_down = False
+drag_mouse_pos = None  # Aktuelle Mausposition während des Drag-Vorgangs
+control_rects = {}  # Touch/Maus-Buttons (Rotate/Mirror/Cancel/Place)
+
+def get_pointer_pos(event):
+    """Vereinheitlicht Maus- und Touch-Events (FINGER*) auf Pixel-Koordinaten."""
+    if event.type in (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP):
+        w, h = screen.get_size()
+        return int(event.x * w), int(event.y * h)
+    return event.pos
+
+def is_point_on_board(x, y):
+    return BOARD_X <= x < BOARD_X + GRID_COLS * GRID_SIZE and BOARD_Y <= y < BOARD_Y + GRID_ROWS * GRID_SIZE
+
+def snap_board_cell(x, y):
+    """Gibt die Top-Left Pixel-Koordinate der Board-Zelle zurück (geclamped)."""
+    col = (x - BOARD_X) // GRID_SIZE
+    row = (y - BOARD_Y) // GRID_SIZE
+    col = max(0, min(GRID_COLS - 1, int(col)))
+    row = max(0, min(GRID_ROWS - 1, int(row)))
+    return BOARD_X + col * GRID_SIZE, BOARD_Y + row * GRID_SIZE
+
+def pick_piece_with_anchor(pieces_list, x, y):
+    """Findet ein Stück unter (x,y) und gibt (piece, anchor_square) zurück."""
+    for piece in pieces_list:
+        px, py = piece["pos"]
+        for square in piece["shape"]:
+            sx, sy = px + square[0] * GRID_SIZE, py + square[1] * GRID_SIZE
+            rect = pygame.Rect(sx - GRID_SIZE // 2, sy - GRID_SIZE // 2, GRID_SIZE * 2, GRID_SIZE * 2)
+            if rect.collidepoint(x, y):
+                return piece, square
+    return None, None
+
+def try_transform_selected(transform_fn):
+    """Transformiert selected_piece und macht rückgängig, wenn es das Board verlässt."""
+    global selected_piece
+    if not selected_piece:
+        return False
+    original_shape = selected_piece["shape"][:]
+    transform_fn(selected_piece)
+    if ghost_pos and not is_piece_inside_board(selected_piece, ghost_pos):
+        selected_piece["shape"] = original_shape
+        return False
+    return True
 
 def draw_grid():
     for row in range(GRID_ROWS + 1):
@@ -141,6 +191,10 @@ def draw_selected_pieces_p1():
 
         # 🛠 Korrigiere die gespeicherte Position
         piece["pos"] = (piece_x, piece_y)
+
+        # Beim Drag-and-drop das aktuell gezogene Stück nicht doppelt anzeigen
+        if dragging and dragging_piece is piece:
+            continue
         
         # Zeichne den Stein
         for square in piece["shape"]:
@@ -174,6 +228,10 @@ def draw_selected_pieces_p2():
         
         # 🛠 Korrigiere die gespeicherte Position
         piece["pos"] = (piece_x, piece_y)
+
+        # Beim Drag-and-drop das aktuell gezogene Stück nicht doppelt anzeigen
+        if dragging and dragging_piece is piece:
+            continue
 
         # Zeichne den Stein
         for square in piece["shape"]:
@@ -215,6 +273,7 @@ def draw_winner(winner_text):
 def reset_game():
     """ Setzt das Spiel zurück. """
     global running, player_turn, draw_phase, in_placement_phase, selected_pieces_p1, selected_pieces_p2, pieces, selected_piece, ghost_pos, placed_pieces
+    global dragging, dragging_piece, drag_candidate_piece, drag_button_down, drag_start_pos, drag_mouse_pos
     running = True
     player_turn = 1
     draw_phase = True
@@ -225,6 +284,12 @@ def reset_game():
     selected_piece = None
     ghost_pos = None
     placed_pieces = []
+    dragging = False
+    dragging_piece = None
+    drag_candidate_piece = None
+    drag_button_down = False
+    drag_start_pos = None
+    drag_mouse_pos = None
 
     for i, (name, shape) in enumerate(shapes.items()):
         x = start_x + (i % num_columns) * GRID_SIZE * 6
@@ -277,10 +342,17 @@ def mirror_piece(piece):
     piece["shape"] = adjusted_shape
 
 
+def compute_centroid(shape):
+    """Berechnet den Schwerpunkt einer Form in Shape-Einheiten (Zellkoordinaten)."""
+    cx = sum(x for x, y in shape) / len(shape)
+    cy = sum(y for x, y in shape) / len(shape)
+    return cx, cy
+
+
 
 ghost_pos = None  # Speichert die Position des Ghost Pieces
 
-def draw_ghost_piece(selected_piece):
+def draw_ghost_piece(selected_piece, is_valid=True):
     """ Zeichnet den aktuellen Stein als 'Ghost' (transparente Darstellung) auf das Spielfeld. """
     if not selected_piece or not ghost_pos:
         return  # Falls kein Stein ausgewählt oder kein Ghost Piece aktiv ist
@@ -298,7 +370,69 @@ def draw_ghost_piece(selected_piece):
         screen.blit(ghost_surface, (x, y))
 
         # Umrandung zeichnen
-        pygame.draw.rect(screen, MINT, rect, 2) # Umrandung für bessere Abgrenzung
+        outline = MINT if is_valid else RED
+        pygame.draw.rect(screen, outline, rect, 2) # Umrandung für bessere Abgrenzung
+
+def draw_dragging_piece(piece, mouse_pos, snapped_pos):
+    """Zeichnet den Stein während des Drag-and-Drop mit Schwerpunkt-Positionierung."""
+    if not piece or not mouse_pos:
+        return
+
+    cx, cy = compute_centroid(piece["shape"])
+    centroid_offset_x = cx * GRID_SIZE + GRID_SIZE / 2
+    centroid_offset_y = cy * GRID_SIZE + GRID_SIZE / 2
+
+    if snapped_pos:
+        # Auf dem Board: gerasterte Position verwenden
+        origin_x, origin_y = snapped_pos
+        is_valid = is_piece_inside_board(piece, snapped_pos) and not is_piece_overlapping(piece, snapped_pos)
+    else:
+        # Außerhalb des Boards: Stein folgt dem Cursor frei
+        mx, my = mouse_pos
+        origin_x = mx - centroid_offset_x
+        origin_y = my - centroid_offset_y
+        is_valid = False
+
+    for square in piece["shape"]:
+        sx = origin_x + square[0] * GRID_SIZE
+        sy = origin_y + square[1] * GRID_SIZE
+        rect = pygame.Rect(sx, sy, GRID_SIZE, GRID_SIZE)
+
+        # Halbtransparente Darstellung in der Farbe des Steins
+        ghost_surface = pygame.Surface((GRID_SIZE, GRID_SIZE), pygame.SRCALPHA)
+        r, g, b = piece["color"]
+        ghost_surface.fill((r, g, b, 150))
+        screen.blit(ghost_surface, (sx, sy))
+
+        # Umrandung: Grün wenn gültig, Rot wenn ungültig
+        outline_color = MINT if (snapped_pos and is_valid) else RED
+        pygame.draw.rect(screen, outline_color, rect, 2)
+
+def draw_touch_controls():
+    """Zeichnet große Buttons für Touch/Maus (Rotation/Spiegeln/Abbrechen/Platzieren)."""
+    if not selected_piece:
+        return {}
+
+    button_w = GRID_SIZE * 6
+    button_h = GRID_SIZE * 2
+    gap = GRID_SIZE
+    y = SCREEN_HEIGHT - button_h - GRID_SIZE
+
+    labels = [("Rotate", "R"), ("Mirror", "M"), ("Cancel", "0"), ("Place", "Enter")]
+    total_w = len(labels) * button_w + (len(labels) - 1) * gap
+    start_x = SCREEN_WIDTH // 2 - total_w // 2
+
+    rects = {}
+    for i, (label, hotkey) in enumerate(labels):
+        rect = pygame.Rect(start_x + i * (button_w + gap), y, button_w, button_h)
+        pygame.draw.rect(screen, WHITE, rect)
+        pygame.draw.rect(screen, BLACK, rect, 2)
+        text = font.render(f"{label} ({hotkey})", True, text_color)
+        text_rect = text.get_rect(center=rect.center)
+        screen.blit(text, text_rect)
+        rects[label.lower()] = rect
+
+    return rects
         
 def is_piece_inside_board(piece, position):
     """ Prüft, ob das gegebene Stück mit seiner Position im Spielfeld bleibt. """
@@ -325,20 +459,11 @@ def place_piece(selected_piece):
     px, py = ghost_pos
     shape = selected_piece["shape"]
 
-    # Prüfen, ob der Stein mit einem bereits platzierten kollidiert
-    for square in shape:
-        x, y = px + square[0] * GRID_SIZE, py + square[1] * GRID_SIZE
-
-        for placed_piece in placed_pieces:  # Gehe durch alle bereits gesetzten Steine
-            placed_px, placed_py = placed_piece["pos"]
-            for placed_square in placed_piece["shape"]:
-                placed_x = placed_px + placed_square[0] * GRID_SIZE
-                placed_y = placed_py + placed_square[1] * GRID_SIZE
-
-                if pygame.Rect(x, y, GRID_SIZE, GRID_SIZE).colliderect(
-                        pygame.Rect(placed_x, placed_y, GRID_SIZE, GRID_SIZE)):
-                    print("⚠️ Stein überlappt mit einem anderen Stein!")
-                    return False  # Platzierung ist ungültig
+    if not is_piece_inside_board(selected_piece, ghost_pos):
+        return False
+    if is_piece_overlapping(selected_piece, ghost_pos):
+        print("⚠️ Stein überlappt mit einem anderen Stein!")
+        return False  # Platzierung ist ungültig
 
     # Stein kann platziert werden
     placed_pieces.append({
@@ -453,25 +578,116 @@ while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                x, y = event.pos
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
+                x, y = get_pointer_pos(event)
                 if reset_rect and reset_rect.collidepoint(x, y):
                     reset_game()
                     continue
         continue  # Verhindert das Zeichnen der Handlungsoptionen und andere Logik
 
 
+    ghost_valid = bool(selected_piece and ghost_pos and is_piece_inside_board(selected_piece, ghost_pos) and not is_piece_overlapping(selected_piece, ghost_pos))
+
     if in_placement_phase:
-        draw_ghost_piece(selected_piece)
-        draw_actions(["Mausklick auf Stein: Auswahl", "P: Platzieren Ghost-Stein", "0: Abbrechen Ghost-Stein", "Pfeiltasten oder W/A/S/D: Bewegen Ghost-Stein", "R: Drehen", "M: Spiegeln", "Enter: Platzieren-Final"])
+        if dragging:
+            draw_dragging_piece(selected_piece, drag_mouse_pos, ghost_pos)
+        else:
+            draw_ghost_piece(selected_piece, is_valid=ghost_valid)
+        draw_actions(["Touch/Maus: Stein ziehen & ablegen", "0/Cancel: Abbrechen", "Pfeiltasten oder W/A/S/D: Ghost bewegen", "R: Drehen", "M: Spiegeln", "Enter/Place: Platzieren"])
     elif draw_phase:
         draw_actions(["Mausklick auf Stein: Auswahl"])
     else:
-        draw_actions(["Mausklick auf Stein: Auswahl", "R: Drehen", "M: Spiegeln", "P: Platzieren Ghost-Stein"])
+        draw_actions(["Touch/Maus: Stein ziehen & ablegen", "Mausklick auf Stein: Auswahl", "R: Drehen", "M: Spiegeln", "P: Ghost starten"])
+
+    control_rects = draw_touch_controls() if not draw_phase else {}
     
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+        elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
+            x, y = get_pointer_pos(event)
+
+            # Touch-Buttons (auch mit Maus klickbar)
+            if control_rects:
+                if control_rects.get("rotate") and control_rects["rotate"].collidepoint(x, y):
+                    try_transform_selected(rotate_piece)
+                    continue
+                if control_rects.get("mirror") and control_rects["mirror"].collidepoint(x, y):
+                    try_transform_selected(mirror_piece)
+                    continue
+                if control_rects.get("cancel") and control_rects["cancel"].collidepoint(x, y):
+                    in_placement_phase = False
+                    ghost_pos = None
+                    dragging = False
+                    dragging_piece = None
+                    drag_candidate_piece = None
+                    drag_button_down = False
+                    drag_start_pos = None
+                    drag_mouse_pos = None
+                    continue
+                if control_rects.get("place") and control_rects["place"].collidepoint(x, y):
+                    if place_piece(selected_piece):
+                        in_placement_phase = False
+                        ghost_pos = None
+                        selected_piece = None
+                        dragging = False
+                        dragging_piece = None
+                        drag_candidate_piece = None
+                        drag_button_down = False
+                        drag_start_pos = None
+                        drag_mouse_pos = None
+                    continue
+
+            if draw_phase:  # ZIEH-PHASE (Tap/Klick)
+                for piece in pieces:
+                    px, py = piece["pos"]
+
+                    for square in piece["shape"]:
+                        sx, sy = px + square[0] * GRID_SIZE, py + square[1] * GRID_SIZE
+                        expanded_rect = pygame.Rect(sx - GRID_SIZE // 2, sy - GRID_SIZE // 2, GRID_SIZE * 2, GRID_SIZE * 2)
+
+                        if expanded_rect.collidepoint(x, y):
+                            selected_piece = piece
+                            pieces.remove(piece)
+
+                            if player_turn == 1:
+                                selected_pieces_p1.append(piece)
+                                player_turn = 2
+                            else:
+                                selected_pieces_p2.append(piece)
+                                player_turn = 1
+
+                            selected_piece = None
+
+                            if len(selected_pieces_p1) == 6 and len(selected_pieces_p2) == 6:
+                                draw_phase = False
+                                selected_piece = None
+                                player_turn = 2
+
+                            break
+                continue
+
+            # 📌 PLATZIERUNGS-PHASE: Tap selektiert / Drag startet erst bei Bewegung
+            current_pieces = selected_pieces_p1 if player_turn == 1 else selected_pieces_p2
+            piece, anchor = pick_piece_with_anchor(current_pieces, x, y)
+            if piece:
+                if selected_piece is not piece:
+                    ghost_pos = None
+                    in_placement_phase = False
+                selected_piece = piece
+                drag_candidate_piece = piece
+                drag_candidate_anchor = anchor
+                drag_start_pos = (x, y)
+                drag_button_down = True
+                continue
+
+            # Optional: Tap aufs Board setzt den Ghost (für Touch ohne Drag)
+            if selected_piece and is_point_on_board(x, y):
+                in_placement_phase = True
+                cell_x, cell_y = snap_board_cell(x, y)
+                ghost_pos = (cell_x, cell_y)
+                continue
         
         
         elif event.type == pygame.KEYDOWN and ghost_pos:
@@ -488,22 +704,30 @@ while running:
             elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                 new_pos = (gx, gy + GRID_SIZE)
             if event.key == pygame.K_r:
-                original_shape = selected_piece["shape"][:]
-                rotate_piece(selected_piece)
-
-                # Prüfen, ob nach der Drehung alles im Feld bleibt
-                if not is_piece_inside_board(selected_piece, ghost_pos):
-                    selected_piece["shape"] = original_shape  # Rückgängig machen  
+                try_transform_selected(rotate_piece)
             elif event.key == pygame.K_m:
-                mirror_piece(selected_piece)  
+                try_transform_selected(mirror_piece)
             elif event.key == pygame.K_0:
                 in_placement_phase = False
                 ghost_pos = None
+                dragging = False
+                dragging_piece = None
+                drag_candidate_piece = None
+                drag_button_down = False
+                drag_start_pos = None
+                drag_mouse_pos = None
                 break
             elif event.key == pygame.K_RETURN:
-                place_piece(selected_piece)
-                ghost_pos = None  
-                selected_piece = None                
+                if place_piece(selected_piece):
+                    in_placement_phase = False
+                    ghost_pos = None
+                    selected_piece = None
+                    dragging = False
+                    dragging_piece = None
+                    drag_candidate_piece = None
+                    drag_button_down = False
+                    drag_start_pos = None
+                    drag_mouse_pos = None
             
             if new_pos:
                 new_gx, new_gy = new_pos
@@ -520,61 +744,63 @@ while running:
                 if is_valid:
                     ghost_pos = new_pos  # Nur aktualisieren, wenn gültig
 
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            x, y = event.pos
-            
-            if draw_phase:  # ZIEH-PHASE
-                for piece in pieces:
-                    px, py = piece["pos"]
-            
-                    for square in piece["shape"]:
-                        sx, sy = px + square[0] * GRID_SIZE, py + square[1] * GRID_SIZE
+        elif event.type in (pygame.MOUSEMOTION, pygame.FINGERMOTION):
+            x, y = get_pointer_pos(event)
 
-                        # Erweitertes Kollisionsrechteck mit einem Rand von einem halben Quadrat
-                        expanded_rect = pygame.Rect(sx - GRID_SIZE // 2, sy - GRID_SIZE // 2, GRID_SIZE + GRID_SIZE, GRID_SIZE + GRID_SIZE)
-                        
-                        if expanded_rect.collidepoint(x, y):
-                            selected_piece = piece
-                            pieces.remove(piece)  # Entferne den Stein aus der Auswahl, Ziel: plazierung des Steins neben das Spielfeld
-                            
-                            if player_turn == 1:
-                                selected_pieces_p1.append(piece)
-                                player_turn = 2  # Nächster Zug für Spieler 2
-                            else:
-                                selected_pieces_p2.append(piece)
-                                player_turn = 1  # Nächster Zug für Spieler 1
+            if drag_button_down and drag_candidate_piece and not dragging and drag_start_pos:
+                dx = x - drag_start_pos[0]
+                dy = y - drag_start_pos[1]
+                threshold = max(8, GRID_SIZE // 3)
+                if dx * dx + dy * dy >= threshold * threshold:
+                    dragging = True
+                    dragging_piece = drag_candidate_piece
+                    drag_anchor = drag_candidate_anchor
+                    in_placement_phase = True
 
-                            # Wenn beide Spieler je 6 Steine gewählt haben, endet die Ziehphase
-                            if len(selected_pieces_p1) == 6 and len(selected_pieces_p2) == 6:
-                                draw_phase = False
-                                selected_piece = None
-                                player_turn = 2
-                            
-                            break
-            
-            else:  # 📌 PLATZIERUNGS-PHASE
-                current_pieces = selected_pieces_p1 if player_turn == 1 else selected_pieces_p2
-            
-                # 📌 1. Falls ein Stein angeklickt wird -> Auswahl
-                if ghost_pos == None:
-                    for piece in current_pieces:
-                        px, py = piece["pos"]
-                
-                        for square in piece["shape"]:
-                            sx, sy = px + square[0] * GRID_SIZE, py + square[1] * GRID_SIZE
-                            rect = pygame.Rect(sx - GRID_SIZE // 2, sy - GRID_SIZE // 2, GRID_SIZE + GRID_SIZE, GRID_SIZE + GRID_SIZE)
+            if dragging and selected_piece:
+                drag_mouse_pos = (x, y)
+                cx, cy = compute_centroid(selected_piece["shape"])
+                centroid_offset_x = cx * GRID_SIZE + GRID_SIZE / 2
+                centroid_offset_y = cy * GRID_SIZE + GRID_SIZE / 2
 
-                            if rect.collidepoint(x, y):
-                                selected_piece = piece  # Stein gefunden!
-                                break  # Bricht die innere Schleife ab
-                
-    
+                if is_point_on_board(x, y):
+                    # Schwerpunkt-basiertes Einrasten ins Raster
+                    raw_x = x - centroid_offset_x
+                    raw_y = y - centroid_offset_y
+                    col = round((raw_x - BOARD_X) / GRID_SIZE)
+                    row = round((raw_y - BOARD_Y) / GRID_SIZE)
+                    ghost_pos = (BOARD_X + col * GRID_SIZE, BOARD_Y + row * GRID_SIZE)
+                else:
+                    ghost_pos = None
+
+        elif event.type in (pygame.MOUSEBUTTONUP, pygame.FINGERUP):
+            if drag_button_down:
+                drag_button_down = False
+                drag_candidate_piece = None
+                drag_start_pos = None
+
+            if dragging and selected_piece:
+                dragging = False
+                dragging_piece = None
+                drag_mouse_pos = None
+
+                drop_valid = bool(ghost_pos and is_piece_inside_board(selected_piece, ghost_pos) and not is_piece_overlapping(selected_piece, ghost_pos))
+                if drop_valid and place_piece(selected_piece):
+                    in_placement_phase = False
+                    ghost_pos = None
+                    selected_piece = None
+                else:
+                    # Ungültiger Zug: Stein kehrt zum ursprünglichen Platz zurück
+                    in_placement_phase = False
+                    ghost_pos = None
+                    selected_piece = None
+
         elif event.type == pygame.KEYDOWN and selected_piece:
             #  📌 2. Drehen oder Spiegeln nur in der Platzierungsphase, falls ein Stein ausgewählt ist oder Stein wird auf das Spielfeld gelegt
             if event.key == pygame.K_r:
-                rotate_piece(selected_piece)  
+                try_transform_selected(rotate_piece)
             elif event.key == pygame.K_m:
-                mirror_piece(selected_piece)   
+                try_transform_selected(mirror_piece)
             elif event.key == pygame.K_p and draw_phase == False:
                 in_placement_phase = True
                 min_x = min(x for x, y in selected_piece["shape"])
