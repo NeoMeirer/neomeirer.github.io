@@ -70,10 +70,12 @@ My TODOs:
 - [ ] learn about markdown syntax (to write posts properly)
 - [ ] add posts and blogs + affiliate marketing + advertisement 
 - [ ] comment funktion for users? 
-- [ ] change profile picture? 
-- [ ] switch: german and english language (eiheitliche Sprache)
-- [ ] change icon
-
 - [ ] Feedback Pentomino einbauen: 
         1. Modi: Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
         2. Ranglistenspiele 
+
+
+git add .
+git commit -m "mini-debug"
+git push
+```

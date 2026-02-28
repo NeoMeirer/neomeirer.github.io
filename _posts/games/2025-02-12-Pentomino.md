@@ -40,7 +40,7 @@ function toggleFullscreen() {
 # Spielregeln
 
 ## 1. Ziehphase
-Zu Beginn werden die Spielsteine abwechselnd gezogen. Hier fängt Spieler 1 an. Player 2 zieht den zweiten Spielstein. Dies geht so weiter, bis alle Spielsteine verteilt sind.
+Zu Beginn werden die Spielsteine abwechselnd gezogen. Hier fängt Spieler 1 an. Spieler 2 zieht den zweiten Spielstein. Dies geht so weiter, bis alle Spielsteine verteilt sind.
 
 ## 2. Platzierphase
 Die Spieler legen abwechselnd einen ihrer Spielsteine auf das Spielfeld. Dabei ist es egal, wo die Steine auf dem Spielfeld platziert werden, man darf nur keinen anderen Spielstein bedecken. Es beginnt derjenige Spieler mit dem Legen, der nicht begonnen hat zu ziehen. (Hier Spieler 2)
