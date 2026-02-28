@@ -10,7 +10,7 @@ GRID_ROWS, GRID_COLS = 6, 10
 BOARD_X, BOARD_Y = round((SCREEN_WIDTH - GRID_COLS * GRID_SIZE) // 2), round((SCREEN_HEIGHT - GRID_ROWS * GRID_SIZE // 4) // 2)
 
 # Alexanders Farbschema
-WHITE = (211, 215, 207)
+WHITE = (235, 235, 230)
 BLACK = (0, 0, 0)
 BURGUNDY = (126, 0, 0)
 RED = (218, 68, 83)
@@ -24,7 +24,7 @@ PINK = (173, 127, 168)
 CYAN = (92, 53, 102)
 BROWN = (193, 125, 17)
 GRAY = (111, 113, 109)
-MINT = (0, 164, 137)
+BOARD_BG = (250, 250, 247)  # Dezenter Board-Hintergrund (fast weiß)
 # Wenn Farbänderung: Änderung Zeile 116, 300 und 296 (transparente Darstellung)
 
 
@@ -93,6 +93,7 @@ for i, (name, shape) in enumerate(shapes.items()):
     y = GRID_SIZE + (i // num_columns) * GRID_SIZE * 4  # Zweite Reihe etwas tiefer
     
     piece = {
+        "name": name,
         "shape": shape,
         "color": colors[i % len(colors)],
         "pos": (x, y),
@@ -139,19 +140,41 @@ def pick_piece_with_anchor(pieces_list, x, y):
                 return piece, square
     return None, None
 
+def clamp_ghost_to_board(piece, pos):
+    """Passt die Ghost-Position an, damit der Stein vollständig im Board bleibt."""
+    gx, gy = pos
+    shape = piece["shape"]
+    min_col = min(s[0] for s in shape)
+    max_col = max(s[0] for s in shape)
+    min_row = min(s[1] for s in shape)
+    max_row = max(s[1] for s in shape)
+
+    if gx + min_col * GRID_SIZE < BOARD_X:
+        gx = BOARD_X - min_col * GRID_SIZE
+    if gx + max_col * GRID_SIZE >= BOARD_X + GRID_COLS * GRID_SIZE:
+        gx = BOARD_X + (GRID_COLS - 1 - max_col) * GRID_SIZE
+
+    if gy + min_row * GRID_SIZE < BOARD_Y:
+        gy = BOARD_Y - min_row * GRID_SIZE
+    if gy + max_row * GRID_SIZE >= BOARD_Y + GRID_ROWS * GRID_SIZE:
+        gy = BOARD_Y + (GRID_ROWS - 1 - max_row) * GRID_SIZE
+
+    return (gx, gy)
+
 def try_transform_selected(transform_fn):
-    """Transformiert selected_piece und macht rückgängig, wenn es das Board verlässt."""
-    global selected_piece
+    """Transformiert selected_piece. Passt ghost_pos an, statt rückgängig zu machen."""
+    global selected_piece, ghost_pos
     if not selected_piece:
         return False
-    original_shape = selected_piece["shape"][:]
     transform_fn(selected_piece)
-    if ghost_pos and not is_piece_inside_board(selected_piece, ghost_pos):
-        selected_piece["shape"] = original_shape
-        return False
+    if ghost_pos:
+        ghost_pos = clamp_ghost_to_board(selected_piece, ghost_pos)
     return True
 
 def draw_grid():
+    # Board-Hintergrund zeichnen
+    board_rect = pygame.Rect(BOARD_X, BOARD_Y, GRID_COLS * GRID_SIZE, GRID_ROWS * GRID_SIZE)
+    pygame.draw.rect(screen, BOARD_BG, board_rect)
     for row in range(GRID_ROWS + 1):
         pygame.draw.aaline(screen, BLACK, (BOARD_X, BOARD_Y + row * GRID_SIZE),  # aaline statt line für mögliche höhere Kompatibilität und Qualität (Anti-Aliasing)
                          (BOARD_X + GRID_COLS * GRID_SIZE, BOARD_Y + row * GRID_SIZE))
@@ -164,7 +187,7 @@ def draw_pieces():
         for square in piece["shape"]:
             x, y = piece["pos"]
             rect = pygame.Rect(x + square[0] * GRID_SIZE, y + square[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE)
-            pygame.draw.rect(screen, MINT, rect) # Steine einheitliche Farbe
+            pygame.draw.rect(screen, piece["color"], rect) # Steine in echten Farben
             pygame.draw.rect(screen, BLACK, rect, 1)
 
 
@@ -201,6 +224,8 @@ def draw_selected_pieces_p1():
             rect = pygame.Rect(piece_x + square[0] * GRID_SIZE, piece_y + square[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE)
             pygame.draw.rect(screen, piece["color"], rect)
             pygame.draw.rect(screen, BLACK, rect, 1)
+            if piece is selected_piece:
+                pygame.draw.rect(screen, BLACK, rect, 4)  # Ausgewählter Stein: dicker Rahmen
 
 def draw_selected_pieces_p2():
     # Offset für die Spielsteine neben dem Spielfeld
@@ -238,6 +263,8 @@ def draw_selected_pieces_p2():
             rect = pygame.Rect(piece_x + square[0] * GRID_SIZE, piece_y + square[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE)
             pygame.draw.rect(screen, piece["color"], rect)
             pygame.draw.rect(screen, BLACK, rect, 1)
+            if piece is selected_piece:
+                pygame.draw.rect(screen, BLACK, rect, 4)  # Ausgewählter Stein: dicker Rahmen
 
 
 def draw_actions(actions):
@@ -250,7 +277,7 @@ def draw_actions(actions):
 
 def draw_player_turn():
     """ Zeichnet den aktuellen Spieler oben auf dem Bildschirm. """
-    player_turn_text = f"Spieler Turn: {player_turn}"
+    player_turn_text = f"Player Turn: {player_turn}"
     player_turn_surface = font_player.render(player_turn_text, True, text_color)
     player_turn_rect = player_turn_surface.get_rect(center=(SCREEN_WIDTH // 2, BOARD_Y - GRID_SIZE // 2))
     screen.blit(player_turn_surface, player_turn_rect)
@@ -273,7 +300,7 @@ def draw_winner(winner_text):
 def reset_game():
     """ Setzt das Spiel zurück. """
     global running, player_turn, draw_phase, in_placement_phase, selected_pieces_p1, selected_pieces_p2, pieces, selected_piece, ghost_pos, placed_pieces
-    global dragging, dragging_piece, drag_candidate_piece, drag_button_down, drag_start_pos, drag_mouse_pos
+    global dragging, dragging_piece, drag_candidate_piece, drag_button_down, drag_start_pos, drag_mouse_pos, surrendered
     running = True
     player_turn = 1
     draw_phase = True
@@ -290,12 +317,14 @@ def reset_game():
     drag_button_down = False
     drag_start_pos = None
     drag_mouse_pos = None
+    surrendered = False
 
     for i, (name, shape) in enumerate(shapes.items()):
         x = start_x + (i % num_columns) * GRID_SIZE * 6
         y = 50 + (i // num_columns) * GRID_SIZE * 4  # Zweite Reihe etwas tiefer
         
         piece = {
+            "name": name,
             "shape": shape,
             "color": colors[i % len(colors)],
             "pos": (x, y),
@@ -370,7 +399,7 @@ def draw_ghost_piece(selected_piece, is_valid=True):
         screen.blit(ghost_surface, (x, y))
 
         # Umrandung zeichnen
-        outline = MINT if is_valid else RED
+        outline = DARK_GREEN if is_valid else RED
         pygame.draw.rect(screen, outline, rect, 2) # Umrandung für bessere Abgrenzung
 
 def draw_dragging_piece(piece, mouse_pos, snapped_pos):
@@ -405,7 +434,7 @@ def draw_dragging_piece(piece, mouse_pos, snapped_pos):
         screen.blit(ghost_surface, (sx, sy))
 
         # Umrandung: Grün wenn gültig, Rot wenn ungültig
-        outline_color = MINT if (snapped_pos and is_valid) else RED
+        outline_color = DARK_GREEN if (snapped_pos and is_valid) else RED
         pygame.draw.rect(screen, outline_color, rect, 2)
 
 def draw_touch_controls():
@@ -433,7 +462,23 @@ def draw_touch_controls():
         rects[label.lower()] = rect
 
     return rects
-        
+
+surrender_rect = None
+
+def draw_surrender_button():
+    """Zeichnet den Surrender-Button oben rechts (nur in der Platzierungsphase)."""
+    button_w = GRID_SIZE * 5
+    button_h = GRID_SIZE * 2
+    x = SCREEN_WIDTH - button_w - GRID_SIZE
+    y = GRID_SIZE
+    rect = pygame.Rect(x, y, button_w, button_h)
+    pygame.draw.rect(screen, WHITE, rect)
+    pygame.draw.rect(screen, RED, rect, 2)
+    text = font.render("Surrender", True, RED)
+    text_rect = text.get_rect(center=rect.center)
+    screen.blit(text, text_rect)
+    return rect
+
 def is_piece_inside_board(piece, position):
     """ Prüft, ob das gegebene Stück mit seiner Position im Spielfeld bleibt. """
     px, py = position
@@ -549,6 +594,7 @@ selected_pieces_p2 = []  # Gespeicherte Steine von Spieler 2
 
 start_time = time.time()
 _last_finger_tick = 0  # Zeitstempel des letzten FINGER-Events (Touch-Deduplizierung)
+surrendered = False
 
 while running:
     screen.fill(WHITE)
@@ -572,9 +618,9 @@ while running:
         screen.blit(letter_surface, letter_rect)
 
     #  📌 3. Spielende: Es verliert derjenige Spieler, der an der Reihe ist und keinen Stein mehr legen kann
-    if not draw_phase and investigate_Game_over():
-        reset_rect = draw_winner(f"Spieler {player_turn} hat verloren!")
-        draw_winner(f"Spieler {player_turn} hat verloren!")
+    if not draw_phase and (surrendered or investigate_Game_over()):
+        msg = f"Player {player_turn} surrendered!" if surrendered else f"Player {player_turn} hat verloren!"
+        reset_rect = draw_winner(msg)
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -599,13 +645,14 @@ while running:
             draw_dragging_piece(selected_piece, drag_mouse_pos, ghost_pos)
         else:
             draw_ghost_piece(selected_piece, is_valid=ghost_valid)
-        draw_actions(["Touch/Maus: Stein ziehen & ablegen", "Pfeiltasten oder W/A/S/D: Ghost bewegen", "R: Drehen", "M: Spiegeln"])
+        draw_actions(["Touch/Mouse: drag&drop or select piece", "P: generate ghost piece", "W/A/S/D: move ghost piece", "Enter: place ghost piece", "0: cancel"])
     elif draw_phase:
-        draw_actions(["Mausklick auf Stein: Auswahl"])
+        draw_actions(["click on piece: select"])
     else:
-        draw_actions(["Touch/Maus: Stein ziehen & ablegen", "Mausklick auf Stein: Auswahl", "R: Drehen", "M: Spiegeln", "P: Ghost starten"])
+        draw_actions(["Touch/Mouse: drag&drop or select piece", "P: generate ghost piece", "W/A/S/D: move ghost piece", "Enter: place ghost piece", "0: cancel"])
 
     control_rects = draw_touch_controls() if not draw_phase else {}
+    surrender_rect = draw_surrender_button() if not draw_phase else None
     
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -620,6 +667,11 @@ while running:
                 continue  # Synthetisches MOUSE-Event nach FINGER-Event ignorieren
 
             x, y = get_pointer_pos(event)
+
+            # Surrender-Button
+            if surrender_rect and surrender_rect.collidepoint(x, y):
+                surrendered = True
+                continue
 
             # Touch-Buttons (auch mit Maus klickbar)
             if control_rects:
@@ -791,10 +843,9 @@ while running:
                     ghost_pos = None
                     selected_piece = None
                 else:
-                    # Ungültiger Zug: Stein kehrt zum ursprünglichen Platz zurück
+                    # Ungültiger Zug: Ghost zurücksetzen, Stein bleibt ausgewählt
                     in_placement_phase = False
                     ghost_pos = None
-                    selected_piece = None
 
         elif event.type == pygame.KEYDOWN and selected_piece:
             #  📌 2. Drehen oder Spiegeln nur in der Platzierungsphase, falls ein Stein ausgewählt ist oder Stein wird auf das Spielfeld gelegt

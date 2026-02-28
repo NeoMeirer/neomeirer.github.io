@@ -5,6 +5,8 @@ author: "Neo"
 permalink: /
 ---
 
-Hi I'm Neo and I have a Website now. Apart from being a place for the Pentomino game, I'll share some of my contemplations here.
+Hi I'm Neo.
+This is my little digital playground.
+Start with the Pentomino Game.
 
 

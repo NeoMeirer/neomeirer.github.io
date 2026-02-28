@@ -21,7 +21,6 @@ bundle exec jekyll -v
 ```
 
 To build and serve your site, run:
-
 ```bash
 bundle exec jekyll serve
 ```
@@ -31,8 +30,7 @@ Pentomino Spiel mit Hilfe von pygbag formatieren/updaten
  cd Pentomino_Python 
  pygbag . 
  ```
-
- Dann Code, der Mausklick simuliert, am Ende des <body>-Tags in der index.html (Pentomino_Python/build/web/index.html) einfügen um "Ready to Start!" Bildschirm automatisch zu übersprigen:
+Dann Code, der Mausklick simuliert, am Ende des <body>-Tags in der index.html (Pentomino_Python/build/web/index.html) einfügen um "Ready to Start!" Bildschirm automatisch zu übersprigen:
 <script>
         document.addEventListener('DOMContentLoaded', function() {
         // Simuliere einen Klick auf den Startbildschirm nach einer kurzen Verzögerung (z.B. 1 Sekunde)
@@ -60,7 +58,12 @@ bundle exec jekyll serve
 
 Simply create a new branch, e.g., gh-pages. Then go to the github settings > Pages > Branch and select gh-pages as your branch. Done.
 
-
+To update on github
+```bash
+git add .
+git commit -m "comment"
+git push
+```
 
 My TODOs:
 
@@ -68,14 +71,9 @@ My TODOs:
 - [ ] add posts and blogs + affiliate marketing + advertisement 
 - [ ] comment funktion for users? 
 - [ ] change profile picture? 
-- [ ] add contemplations
 - [ ] switch: german and english language (eiheitliche Sprache)
 - [ ] change icon
 
 - [ ] Feedback Pentomino einbauen: 
-        0. Ladescreen verkürzen
-        1. ✅ Ergänzung Drag&Drop (Schwerpunkt des Steins bestimmen)
-        2. ✅ Buttons: 100% Touch Spielbarkeit
-        3. "Aufgeben"-Button hinzufügen
-        4. Modi: Two Player Modus + Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
-        5. Ranglistenspiele 
+        1. Modi: Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
+        2. Ranglistenspiele 

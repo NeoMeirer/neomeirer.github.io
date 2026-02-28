@@ -40,23 +40,13 @@ function toggleFullscreen() {
 # Spielregeln
 
 ## 1. Ziehphase
-Zu Beginn werden die Spielsteine abwechselnd gezogen. Hier fängt Player 1 an. Player 2 zieht den zweiten Spielstein. Dies geht so weiter, bis alle Spielsteine verteilt sind.
-
-### Schritte:
-1. Player 1 wählt einen Spielstein aus.
-2. Player 2 wählt einen Spielstein aus.
-3. Wiederhole die Schritte 1 und 2, bis alle Spielsteine verteilt sind.
+Zu Beginn werden die Spielsteine abwechselnd gezogen. Hier fängt Spieler 1 an. Player 2 zieht den zweiten Spielstein. Dies geht so weiter, bis alle Spielsteine verteilt sind.
 
 ## 2. Platzierphase
-Die Spieler legen abwechselnd einen ihrer Spielsteine auf das Spielfeld. Dabei ist es egal, wo die Steine auf dem Spielfeld platziert werden, man darf nur keinen anderen Spielstein bedecken. Es beginnt derjenige Spieler mit dem Legen, der nicht begonnen hat zu ziehen. (Hier Player 2)
-
-### Schritte:
-1. Player 2 wählt einen Spielstein aus und platziert ihn auf dem Spielfeld.
-2. Player 1 wählt einen Spielstein aus und platziert ihn auf dem Spielfeld.
-3. Wiederhole die Schritte 1 und 2, bis ein Spieler keinen Spielstein mehr platzieren kann.
+Die Spieler legen abwechselnd einen ihrer Spielsteine auf das Spielfeld. Dabei ist es egal, wo die Steine auf dem Spielfeld platziert werden, man darf nur keinen anderen Spielstein bedecken. Es beginnt derjenige Spieler mit dem Legen, der nicht begonnen hat zu ziehen. (Hier Spieler 2)
 
 ## 3. Spielende
 Die Spielrunde ist zu Ende, wenn der Spieler, der an der Reihe ist, keinen Spielstein mehr auf das Spielfeld legen kann.
 
 ### Gewinner:
-- Der Spieler, der als letzter einen Spielstein platzieren konnte, gewinnt das Spiel.
+Der Spieler, der als letzter einen Spielstein platzieren konnte, gewinnt das Spiel.
