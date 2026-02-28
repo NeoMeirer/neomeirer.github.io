@@ -418,7 +418,7 @@ def draw_touch_controls():
     gap = GRID_SIZE
     y = SCREEN_HEIGHT - button_h - GRID_SIZE
 
-    labels = [("Rotate", "R"), ("Mirror", "M"), ("Cancel", "0"), ("Place", "Enter")]
+    labels = [("Rotate", "R"), ("Mirror", "M")]
     total_w = len(labels) * button_w + (len(labels) - 1) * gap
     start_x = SCREEN_WIDTH // 2 - total_w // 2
 
@@ -548,6 +548,7 @@ selected_pieces_p1 = []  # Gespeicherte Steine von Spieler 1
 selected_pieces_p2 = []  # Gespeicherte Steine von Spieler 2
 
 start_time = time.time()
+_last_finger_tick = 0  # Zeitstempel des letzten FINGER-Events (Touch-Deduplizierung)
 
 while running:
     screen.fill(WHITE)
@@ -579,6 +580,11 @@ while running:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
+                now = pygame.time.get_ticks()
+                if event.type in (pygame.FINGERDOWN,):
+                    _last_finger_tick = now
+                elif now - _last_finger_tick < 80:
+                    continue
                 x, y = get_pointer_pos(event)
                 if reset_rect and reset_rect.collidepoint(x, y):
                     reset_game()
@@ -593,7 +599,7 @@ while running:
             draw_dragging_piece(selected_piece, drag_mouse_pos, ghost_pos)
         else:
             draw_ghost_piece(selected_piece, is_valid=ghost_valid)
-        draw_actions(["Touch/Maus: Stein ziehen & ablegen", "0/Cancel: Abbrechen", "Pfeiltasten oder W/A/S/D: Ghost bewegen", "R: Drehen", "M: Spiegeln", "Enter/Place: Platzieren"])
+        draw_actions(["Touch/Maus: Stein ziehen & ablegen", "Pfeiltasten oder W/A/S/D: Ghost bewegen", "R: Drehen", "M: Spiegeln"])
     elif draw_phase:
         draw_actions(["Mausklick auf Stein: Auswahl"])
     else:
@@ -606,6 +612,13 @@ while running:
             running = False
 
         elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
+            # Touch-Deduplizierung: SDL2 erzeugt oft FINGER + MOUSE für denselben Touch
+            now = pygame.time.get_ticks()
+            if event.type in (pygame.FINGERDOWN,):
+                _last_finger_tick = now
+            elif now - _last_finger_tick < 80:
+                continue  # Synthetisches MOUSE-Event nach FINGER-Event ignorieren
+
             x, y = get_pointer_pos(event)
 
             # Touch-Buttons (auch mit Maus klickbar)
@@ -615,28 +628,6 @@ while running:
                     continue
                 if control_rects.get("mirror") and control_rects["mirror"].collidepoint(x, y):
                     try_transform_selected(mirror_piece)
-                    continue
-                if control_rects.get("cancel") and control_rects["cancel"].collidepoint(x, y):
-                    in_placement_phase = False
-                    ghost_pos = None
-                    dragging = False
-                    dragging_piece = None
-                    drag_candidate_piece = None
-                    drag_button_down = False
-                    drag_start_pos = None
-                    drag_mouse_pos = None
-                    continue
-                if control_rects.get("place") and control_rects["place"].collidepoint(x, y):
-                    if place_piece(selected_piece):
-                        in_placement_phase = False
-                        ghost_pos = None
-                        selected_piece = None
-                        dragging = False
-                        dragging_piece = None
-                        drag_candidate_piece = None
-                        drag_button_down = False
-                        drag_start_pos = None
-                        drag_mouse_pos = None
                     continue
 
             if draw_phase:  # ZIEH-PHASE (Tap/Klick)
@@ -745,6 +736,11 @@ while running:
                     ghost_pos = new_pos  # Nur aktualisieren, wenn gültig
 
         elif event.type in (pygame.MOUSEMOTION, pygame.FINGERMOTION):
+            now = pygame.time.get_ticks()
+            if event.type in (pygame.FINGERMOTION,):
+                _last_finger_tick = now
+            elif now - _last_finger_tick < 80:
+                continue
             x, y = get_pointer_pos(event)
 
             if drag_button_down and drag_candidate_piece and not dragging and drag_start_pos:
@@ -774,6 +770,11 @@ while running:
                     ghost_pos = None
 
         elif event.type in (pygame.MOUSEBUTTONUP, pygame.FINGERUP):
+            now = pygame.time.get_ticks()
+            if event.type in (pygame.FINGERUP,):
+                _last_finger_tick = now
+            elif now - _last_finger_tick < 80:
+                continue
             if drag_button_down:
                 drag_button_down = False
                 drag_candidate_piece = None
