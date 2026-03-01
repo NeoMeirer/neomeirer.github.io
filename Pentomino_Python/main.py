@@ -648,11 +648,14 @@ while running:
         letter_rect = letter_surface.get_rect(center=(player2_x, player_y + i * line_spacing))
         screen.blit(letter_surface, letter_rect)
 
-    #  📌 3. Spielende: Es verliert derjenige Spieler, der an der Reihe ist und keinen Stein mehr legen kann
+    # Spielende: aktueller Spieler kann nicht legen -> anderer gewinnt
     if not draw_phase and (surrendered or investigate_Game_over()):
-        msg = f"Player {player_turn} surrendered!" if surrendered else f"Player {player_turn} hat verloren!"
+        loser = player_turn
+        winner = 2 if loser == 1 else 1
+        msg = f"Player {winner} wins!" if not surrendered else f"Player {loser} surrendered!"
         reset_rect = draw_winner(msg)
         pygame.display.flip()
+
         go_events = pygame.event.get()
         mouse_types = (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP)
         finger_types = (pygame.FINGERDOWN, pygame.FINGERMOTION, pygame.FINGERUP)
@@ -660,10 +663,8 @@ while running:
             _prefer_mouse_events = True
         go_has_finger = any(e.type in finger_types for e in go_events)
         for event in go_events:
-            # Wenn wir Maus-Events beobachten, ignorieren wir alle Finger-Events dauerhaft (pygbag/mobile Browser).
             if _prefer_mouse_events and event.type in finger_types:
                 continue
-            # Wenn kein Maus-Input vorhanden ist, nutzen wir Finger-Events und ignorieren Maus komplett.
             if (not _prefer_mouse_events) and go_has_finger and event.type in mouse_types:
                 continue
             if event.type == pygame.QUIT:

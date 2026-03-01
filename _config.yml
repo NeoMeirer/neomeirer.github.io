@@ -40,3 +40,22 @@ exclude: [ Gemfile, Gemfile.lock, tale.gemspec ]
 collections:
   hidden_posts:
     output: true
+
+# Comments / Chat (via giscus + GitHub Discussions)
+# Setup:
+# 1) Enable Discussions in the GitHub repo
+# 2) Install the "giscus" GitHub App for this repo
+# 3) Use https://giscus.app to generate the IDs below
+giscus:
+  repo: "neomeirer/neomeirer.github.io"
+  repo_id: "R_kgDOK-iy8Q"
+  category: "Chats"
+  category_id: "DIC_kwDOK-iy8c4C3dRd"
+  theme: "light"
+  lang: "de"
+
+# Optional defaults for the chat include
+chat_topics:
+  - "Allgemein"
+  - "Fragen"
+  - "Offtopic"

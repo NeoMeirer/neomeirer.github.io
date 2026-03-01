@@ -76,3 +76,6 @@ My TODOs:
 
 
 
+git add .
+git commit -m "Chat-Funktion"
+git push

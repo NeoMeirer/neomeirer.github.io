@@ -1,0 +1,109 @@
+.chat-widget {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px solid $grey-2;
+  border-radius: 6px;
+  background: $grey-3;
+}
+
+.chat-hint {
+  margin: 0.25rem 0 1rem 0;
+  color: $default-tint;
+  font-size: 0.95rem;
+}
+
+.chat-setup-warning {
+  padding: 0.75rem;
+  border: 1px solid $grey-2;
+  border-radius: 6px;
+  background: $white;
+  margin: 0 0 1rem 0;
+}
+
+.chat-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.chat-label {
+  font-weight: 600;
+}
+
+.chat-topic-select,
+.chat-topic-input {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid $grey-2;
+  border-radius: 6px;
+  background: $white;
+  color: $default-color;
+  font-family: $sans-serif;
+  font-size: 0.95rem;
+}
+
+.chat-topic-input {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.chat-btn {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid $grey-2;
+  border-radius: 6px;
+  background: $white;
+  color: $default-shade;
+  font-family: $sans-serif;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.chat-btn-primary {
+  background: $blue;
+  border-color: $blue;
+  color: $white;
+}
+
+.chat-btn:disabled,
+.chat-topic-select:disabled,
+.chat-topic-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chat-thread {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid $grey-2;
+}
+
+.chat-thread-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-thread-title {
+  font-weight: 700;
+  color: $default-shade;
+}
+
+.chat-thread-close {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid $grey-2;
+  border-radius: 6px;
+  background: $white;
+  color: $default-color;
+  font-family: $sans-serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.chat-thread-body {
+  background: $white;
+  border: 1px solid $grey-2;
+  border-radius: 6px;
+  padding: 0.5rem;
+}

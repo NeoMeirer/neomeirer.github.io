@@ -1,0 +1,165 @@
+{% assign g = site.giscus %}
+{% assign topics = include.topics | default: page.chat_topics | default: site.chat_topics %}
+{% if topics == nil %}
+  {% assign topics = "Allgemein|Fragen|Offtopic" | split: "|" %}
+{% endif %}
+
+{% assign chat_id = include.id | default: page.url | slugify %}
+{% assign root_id = "chat-" | append: chat_id %}
+
+{% assign giscus_ready = false %}
+{% if g and g.repo and g.repo != "" and g.repo_id and g.repo_id != "" and g.category_id and g.category_id != "" %}
+  {% assign giscus_ready = true %}
+{% endif %}
+
+<section class="chat-widget" id="{{ root_id }}">
+  <h2>Chat</h2>
+  <p class="chat-hint">
+    Wähle ein Thema oder starte ein neues. Schreiben/Antworten geht über GitHub (Login erforderlich).
+  </p>
+
+  {% unless giscus_ready %}
+    <div class="chat-setup-warning">
+      <strong>Hinweis:</strong> Chat ist noch nicht konfiguriert. Bitte in <code>_config.yml</code> die Werte unter <code>giscus</code> (insb. <code>repo_id</code> und <code>category_id</code>) setzen.
+    </div>
+  {% endunless %}
+
+  <div class="chat-controls" {% unless giscus_ready %}aria-disabled="true"{% endunless %}>
+    <label class="chat-label" for="{{ root_id }}-topic-select">Thema</label>
+    <select id="{{ root_id }}-topic-select" class="chat-topic-select" {% unless giscus_ready %}disabled{% endunless %}>
+      {% for topic in topics %}
+        <option value="{{ topic | escape }}">{{ topic }}</option>
+      {% endfor %}
+    </select>
+
+    <input
+      id="{{ root_id }}-topic-input"
+      class="chat-topic-input"
+      type="text"
+      inputmode="text"
+      placeholder="oder neues Thema (Titel) eingeben…"
+      {% unless giscus_ready %}disabled{% endunless %}
+    >
+
+    <button type="button" class="chat-btn chat-btn-primary" data-action="open" {% unless giscus_ready %}disabled{% endunless %}>
+      Öffnen
+    </button>
+    <button type="button" class="chat-btn" data-action="add" {% unless giscus_ready %}disabled{% endunless %}>
+      Zusätzlich öffnen
+    </button>
+  </div>
+
+  <div class="chat-threads" aria-live="polite"></div>
+</section>
+
+{% if giscus_ready %}
+  <script>
+    (() => {
+      const root = document.getElementById({{ root_id | jsonify }});
+      if (!root) return;
+
+      const giscusConfig = {
+        repo: {{ g.repo | jsonify }},
+        repoId: {{ g.repo_id | jsonify }},
+        category: {{ g.category | default: "" | jsonify }},
+        categoryId: {{ g.category_id | jsonify }},
+        theme: {{ g.theme | default: "light" | jsonify }},
+        lang: {{ g.lang | default: "de" | jsonify }},
+      };
+
+      const select = root.querySelector(".chat-topic-select");
+      const input = root.querySelector(".chat-topic-input");
+      const threads = root.querySelector(".chat-threads");
+      const openTerms = new Set();
+
+      const normalizeTerm = (value) =>
+        String(value || "")
+          .trim()
+          .replace(/\s+/g, " ")
+          .slice(0, 120);
+
+      const getRequestedTerm = () => {
+        const typed = normalizeTerm(input?.value);
+        if (typed) return typed;
+        return normalizeTerm(select?.value);
+      };
+
+      const createGiscusScript = (term) => {
+        const script = document.createElement("script");
+        script.src = "https://giscus.app/client.js";
+        script.async = true;
+        script.crossOrigin = "anonymous";
+        script.setAttribute("data-repo", giscusConfig.repo);
+        script.setAttribute("data-repo-id", giscusConfig.repoId);
+        if (giscusConfig.category) script.setAttribute("data-category", giscusConfig.category);
+        script.setAttribute("data-category-id", giscusConfig.categoryId);
+        script.setAttribute("data-mapping", "specific");
+        script.setAttribute("data-term", term);
+        script.setAttribute("data-strict", "1");
+        script.setAttribute("data-reactions-enabled", "1");
+        script.setAttribute("data-emit-metadata", "0");
+        script.setAttribute("data-input-position", "bottom");
+        script.setAttribute("data-theme", giscusConfig.theme);
+        script.setAttribute("data-lang", giscusConfig.lang);
+        return script;
+      };
+
+      const addThread = (term) => {
+        if (!term || openTerms.has(term)) return;
+        openTerms.add(term);
+
+        const section = document.createElement("section");
+        section.className = "chat-thread";
+        section.dataset.term = term;
+
+        const header = document.createElement("div");
+        header.className = "chat-thread-header";
+
+        const title = document.createElement("div");
+        title.className = "chat-thread-title";
+        title.textContent = term;
+
+        const close = document.createElement("button");
+        close.type = "button";
+        close.className = "chat-thread-close";
+        close.textContent = "Schließen";
+        close.addEventListener("click", () => {
+          openTerms.delete(term);
+          section.remove();
+        });
+
+        header.appendChild(title);
+        header.appendChild(close);
+
+        const body = document.createElement("div");
+        body.className = "chat-thread-body";
+        body.appendChild(createGiscusScript(term));
+
+        section.appendChild(header);
+        section.appendChild(body);
+        threads.appendChild(section);
+      };
+
+      const openSingle = (term) => {
+        threads.innerHTML = "";
+        openTerms.clear();
+        addThread(term);
+      };
+
+      root.addEventListener("click", (event) => {
+        const button = event.target?.closest?.("button[data-action]");
+        if (!button) return;
+
+        const action = button.getAttribute("data-action");
+        const term = getRequestedTerm();
+        if (!term) return;
+
+        if (action === "open") openSingle(term);
+        if (action === "add") addThread(term);
+      });
+
+      const initial = normalizeTerm(select?.value);
+      if (initial) openSingle(initial);
+    })();
+  </script>
+{% endif %}
