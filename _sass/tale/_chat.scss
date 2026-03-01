@@ -90,6 +90,13 @@
   color: $default-shade;
 }
 
+.chat-thread-meta {
+  color: $default-tint;
+  font-family: $sans-serif;
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem 0;
+}
+
 .chat-thread-close {
   padding: 0.35rem 0.55rem;
   border: 1px solid $grey-2;

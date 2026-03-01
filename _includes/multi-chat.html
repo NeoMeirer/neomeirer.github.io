@@ -4,6 +4,8 @@
   {% assign topics = "Allgemein|Fragen|Offtopic" | split: "|" %}
 {% endif %}
 
+{% assign term_prefix = include.term_prefix | default: page.chat_term_prefix | default: page.url %}
+
 {% assign chat_id = include.id | default: page.url | slugify %}
 {% assign root_id = "chat-" | append: chat_id %}
 
@@ -67,32 +69,41 @@
         lang: {{ g.lang | default: "de" | jsonify }},
       };
 
+      const termPrefix = {{ term_prefix | jsonify }};
       const select = root.querySelector(".chat-topic-select");
       const input = root.querySelector(".chat-topic-input");
       const threads = root.querySelector(".chat-threads");
-      const openTerms = new Set();
-      const storageKey = `multi-chat:${root.id}:openTerms`;
+      const openTopics = new Set();
+      const storageKey = `multi-chat:${root.id}:openTopics`;
 
-      const normalizeTerm = (value) =>
+      const normalizeTopic = (value) =>
         String(value || "")
           .trim()
           .replace(/\s+/g, " ")
-          .slice(0, 120);
+          .slice(0, 250);
 
-      const ensureOptionExists = (term) => {
-        if (!select || !term) return;
-        const exists = Array.from(select.options || []).some((o) => o.value === term);
+      const toTerm = (topic) => {
+        const cleanTopic = normalizeTopic(topic);
+        const cleanPrefix = normalizeTopic(termPrefix);
+        if (!cleanPrefix) return cleanTopic;
+        if (!cleanTopic) return cleanPrefix;
+        return `${cleanPrefix} :: ${cleanTopic}`;
+      };
+
+      const ensureOptionExists = (topic) => {
+        if (!select || !topic) return;
+        const exists = Array.from(select.options || []).some((o) => o.value === topic);
         if (exists) return;
         const opt = document.createElement("option");
-        opt.value = term;
-        opt.textContent = term;
+        opt.value = topic;
+        opt.textContent = topic;
         select.appendChild(opt);
       };
 
-      const getRequestedTerm = () => {
-        const typed = normalizeTerm(input?.value);
+      const getRequestedTopic = () => {
+        const typed = normalizeTopic(input?.value);
         if (typed) return typed;
-        return normalizeTerm(select?.value);
+        return normalizeTopic(select?.value);
       };
 
       const loadState = () => {
@@ -101,7 +112,7 @@
           if (!raw) return null;
           const parsed = JSON.parse(raw);
           if (!Array.isArray(parsed)) return null;
-          return parsed.map(normalizeTerm).filter(Boolean);
+          return parsed.map(normalizeTopic).filter(Boolean);
         } catch {
           return null;
         }
@@ -109,7 +120,7 @@
 
       const saveState = () => {
         try {
-          localStorage.setItem(storageKey, JSON.stringify(Array.from(openTerms)));
+          localStorage.setItem(storageKey, JSON.stringify(Array.from(openTopics)));
         } catch {
           // ignore (private mode / blocked storage)
         }
@@ -137,10 +148,11 @@
         return script;
       };
 
-      const addThread = (term) => {
-        if (!term || openTerms.has(term)) return;
-        ensureOptionExists(term);
-        openTerms.add(term);
+      const addThread = (topic) => {
+        if (!topic || openTopics.has(topic)) return;
+        ensureOptionExists(topic);
+        openTopics.add(topic);
+        const term = toTerm(topic);
 
         const section = document.createElement("section");
         section.className = "chat-thread";
@@ -151,14 +163,14 @@
 
         const title = document.createElement("div");
         title.className = "chat-thread-title";
-        title.textContent = term;
+        title.textContent = topic;
 
         const close = document.createElement("button");
         close.type = "button";
         close.className = "chat-thread-close";
         close.textContent = "Schließen";
         close.addEventListener("click", () => {
-          openTerms.delete(term);
+          openTopics.delete(topic);
           section.remove();
           saveState();
         });
@@ -168,6 +180,12 @@
 
         const body = document.createElement("div");
         body.className = "chat-thread-body";
+
+        const meta = document.createElement("div");
+        meta.className = "chat-thread-meta";
+        meta.textContent = `Discussion-Titel: ${term}`;
+        body.appendChild(meta);
+
         const giscusHost = document.createElement("div");
         giscusHost.className = "giscus";
 
@@ -193,11 +211,11 @@
         saveState();
       };
 
-      const openSingle = (term) => {
-        ensureOptionExists(term);
+      const openSingle = (topic) => {
+        ensureOptionExists(topic);
         threads.innerHTML = "";
-        openTerms.clear();
-        addThread(term);
+        openTopics.clear();
+        addThread(topic);
         saveState();
       };
 
@@ -206,19 +224,34 @@
         if (!button) return;
 
         const action = button.getAttribute("data-action");
-        const term = getRequestedTerm();
-        if (!term) return;
+        const topic = getRequestedTopic();
+        if (!topic) return;
 
-        if (action === "open") openSingle(term);
-        if (action === "add") addThread(term);
+        if (input) input.value = "";
+        if (action === "open") openSingle(topic);
+        if (action === "add") addThread(topic);
+      });
+
+      select?.addEventListener?.("change", () => {
+        if (input) input.value = "";
+        const topic = getRequestedTopic();
+        if (topic) openSingle(topic);
+      });
+
+      input?.addEventListener?.("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        const topic = getRequestedTopic();
+        if (!topic) return;
+        e.preventDefault();
+        openSingle(topic);
       });
 
       const restored = loadState();
       if (restored && restored.length) {
         openSingle(restored[0]);
-        for (const term of restored.slice(1)) addThread(term);
+        for (const topic of restored.slice(1)) addThread(topic);
       } else {
-        const initial = normalizeTerm(select?.value);
+        const initial = normalizeTopic(select?.value);
         if (initial) openSingle(initial);
       }
     })();

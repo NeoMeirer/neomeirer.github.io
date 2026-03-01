@@ -71,5 +71,5 @@ My TODOs:
 - [ ] add posts and blogs
 
 git add .
-git commit -m "debug loading"
+git commit -m "debug Chat"
 git push
