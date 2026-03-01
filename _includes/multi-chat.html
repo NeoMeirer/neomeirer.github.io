@@ -71,6 +71,7 @@
       const input = root.querySelector(".chat-topic-input");
       const threads = root.querySelector(".chat-threads");
       const openTerms = new Set();
+      const storageKey = `multi-chat:${root.id}:openTerms`;
 
       const normalizeTerm = (value) =>
         String(value || "")
@@ -78,10 +79,40 @@
           .replace(/\s+/g, " ")
           .slice(0, 120);
 
+      const ensureOptionExists = (term) => {
+        if (!select || !term) return;
+        const exists = Array.from(select.options || []).some((o) => o.value === term);
+        if (exists) return;
+        const opt = document.createElement("option");
+        opt.value = term;
+        opt.textContent = term;
+        select.appendChild(opt);
+      };
+
       const getRequestedTerm = () => {
         const typed = normalizeTerm(input?.value);
         if (typed) return typed;
         return normalizeTerm(select?.value);
+      };
+
+      const loadState = () => {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return null;
+          return parsed.map(normalizeTerm).filter(Boolean);
+        } catch {
+          return null;
+        }
+      };
+
+      const saveState = () => {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(Array.from(openTerms)));
+        } catch {
+          // ignore (private mode / blocked storage)
+        }
       };
 
       const createGiscusScript = (term) => {
@@ -108,6 +139,7 @@
 
       const addThread = (term) => {
         if (!term || openTerms.has(term)) return;
+        ensureOptionExists(term);
         openTerms.add(term);
 
         const section = document.createElement("section");
@@ -128,6 +160,7 @@
         close.addEventListener("click", () => {
           openTerms.delete(term);
           section.remove();
+          saveState();
         });
 
         header.appendChild(title);
@@ -157,12 +190,15 @@
         section.appendChild(header);
         section.appendChild(body);
         threads.appendChild(section);
+        saveState();
       };
 
       const openSingle = (term) => {
+        ensureOptionExists(term);
         threads.innerHTML = "";
         openTerms.clear();
         addThread(term);
+        saveState();
       };
 
       root.addEventListener("click", (event) => {
@@ -177,8 +213,14 @@
         if (action === "add") addThread(term);
       });
 
-      const initial = normalizeTerm(select?.value);
-      if (initial) openSingle(initial);
+      const restored = loadState();
+      if (restored && restored.length) {
+        openSingle(restored[0]);
+        for (const term of restored.slice(1)) addThread(term);
+      } else {
+        const initial = normalizeTerm(select?.value);
+        if (initial) openSingle(initial);
+      }
     })();
   </script>
 {% endif %}

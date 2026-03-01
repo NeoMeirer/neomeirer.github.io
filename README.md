@@ -68,8 +68,8 @@ git push
 My TODOs:
 
 - [ ] learn about markdown syntax (to write posts properly)
-- [ ] add posts and blogs + affiliate marketing + advertisement 
-- [ ] comment funktion for users? 
-- [ ] Feedback Pentomino einbauen: 
-        1. Modi: Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
-        2. Ranglistenspiele 
+- [ ] add posts and blogs
+
+git add .
+git commit -m "debug loading"
+git push
