@@ -73,9 +73,3 @@ My TODOs:
 - [ ] Feedback Pentomino einbauen: 
         1. Modi: Singel Player Modus Pentomino (Puzzle Modus) + Singel Player Modus gegen KI (für Website bieten sich dafür Hidden_Posts an)
         2. Ranglistenspiele 
-
-
-
-git add .
-git commit -m "Chat-Funktion"
-git push
