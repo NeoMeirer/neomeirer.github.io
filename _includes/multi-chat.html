@@ -126,11 +126,33 @@
         }
       };
 
-      /* ── Giscus-Iframe direkt erstellen (statt client.js dynamisch laden) ── */
+      /* ── Session-Token aus URL lesen (nach GitHub-OAuth-Redirect) ── */
+      const getSession = () => {
+        const url = new URL(location.href);
+        const token = url.searchParams.get("giscus") || "";
+        if (token) {
+          /* Token aus URL entfernen, damit es sauber aussieht */
+          url.searchParams.delete("giscus");
+          history.replaceState(null, "", url.toString());
+          try { sessionStorage.setItem("giscus-session", token); } catch {}
+        }
+        if (token) return token;
+        try { return sessionStorage.getItem("giscus-session") || ""; } catch { return ""; }
+      };
+      const giscusSession = getSession();
+
+      /* ── Giscus-Iframe direkt erstellen ── */
       const createGiscusFrame = (term) => {
+        /* origin muss die Seiten-URL OHNE giscus-Parameter sein */
+        const cleanOrigin = (() => {
+          const u = new URL(location.href);
+          u.searchParams.delete("giscus");
+          return u.toString();
+        })();
+
         const params = new URLSearchParams({
-          origin: location.href,
-          session: "",
+          origin: cleanOrigin,
+          session: giscusSession,
           theme: giscusConfig.theme,
           reactionsEnabled: "1",
           emitMetadata: "0",
@@ -144,7 +166,7 @@
           strict: "1",
           number: "0",
           description: "",
-          backLink: location.href,
+          backLink: cleanOrigin,
         });
 
         const iframe = document.createElement("iframe");
@@ -165,14 +187,23 @@
         if (event.origin !== "https://giscus.app") return;
         if (!event.data || typeof event.data !== "object" || !event.data.giscus) return;
 
-        const { resizeHeight } = event.data.giscus;
-        if (typeof resizeHeight !== "number") return;
+        const { resizeHeight, signOut } = event.data.giscus;
 
-        const frames = root.querySelectorAll("iframe.giscus-frame");
-        for (const f of frames) {
-          if (f.contentWindow === event.source) {
-            f.style.height = resizeHeight + "px";
-            break;
+        /* Login/Logout: Seite neu laden damit alle Iframes die Session erhalten */
+        if (event.data.giscus.signIn) {
+          /* Nach Login-Redirect werden alle Iframes automatisch refreshed */
+        }
+        if (signOut) {
+          try { sessionStorage.removeItem("giscus-session"); } catch {}
+        }
+
+        if (typeof resizeHeight === "number") {
+          const frames = root.querySelectorAll("iframe.giscus-frame");
+          for (const f of frames) {
+            if (f.contentWindow === event.source) {
+              f.style.height = resizeHeight + "px";
+              break;
+            }
           }
         }
       });
