@@ -134,10 +134,13 @@
           /* Token aus URL entfernen, damit es sauber aussieht */
           url.searchParams.delete("giscus");
           history.replaceState(null, "", url.toString());
-          try { sessionStorage.setItem("giscus-session", token); } catch {}
+          try { localStorage.setItem("giscus-session", JSON.stringify(token)); } catch {}
         }
         if (token) return token;
-        try { return sessionStorage.getItem("giscus-session") || ""; } catch { return ""; }
+        try {
+          const raw = localStorage.getItem("giscus-session");
+          return raw ? JSON.parse(raw) : "";
+        } catch { return ""; }
       };
       const giscusSession = getSession();
 
@@ -194,7 +197,7 @@
           /* Nach Login-Redirect werden alle Iframes automatisch refreshed */
         }
         if (signOut) {
-          try { sessionStorage.removeItem("giscus-session"); } catch {}
+          try { localStorage.removeItem("giscus-session"); } catch {}
         }
 
         if (typeof resizeHeight === "number") {

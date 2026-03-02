@@ -49,7 +49,7 @@ collections:
 giscus:
   repo: "neomeirer/neomeirer.github.io"
   repo_id: "R_kgDOK-iy8Q"
-  category: "Chats"
+  category: "General"
   category_id: "DIC_kwDOK-iy8c4C3dRd"
   theme: "light"
   lang: "de"
