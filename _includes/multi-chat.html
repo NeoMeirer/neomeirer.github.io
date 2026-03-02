@@ -126,27 +126,56 @@
         }
       };
 
-      const createGiscusScript = (term) => {
-        const script = document.createElement("script");
-        script.async = true;
-        script.setAttribute("crossorigin", "anonymous");
-        script.crossOrigin = "anonymous";
-        script.setAttribute("data-repo", giscusConfig.repo);
-        script.setAttribute("data-repo-id", giscusConfig.repoId);
-        if (giscusConfig.category) script.setAttribute("data-category", giscusConfig.category);
-        script.setAttribute("data-category-id", giscusConfig.categoryId);
-        script.setAttribute("data-mapping", "specific");
-        script.setAttribute("data-term", term);
-        script.setAttribute("data-strict", "1");
-        script.setAttribute("data-reactions-enabled", "1");
-        script.setAttribute("data-emit-metadata", "0");
-        script.setAttribute("data-input-position", "bottom");
-        script.setAttribute("data-loading", "lazy");
-        script.setAttribute("data-theme", giscusConfig.theme);
-        script.setAttribute("data-lang", giscusConfig.lang);
-        script.src = "https://giscus.app/client.js";
-        return script;
+      /* ── Giscus-Iframe direkt erstellen (statt client.js dynamisch laden) ── */
+      const createGiscusFrame = (term) => {
+        const params = new URLSearchParams({
+          origin: location.href,
+          session: "",
+          theme: giscusConfig.theme,
+          reactionsEnabled: "1",
+          emitMetadata: "0",
+          inputPosition: "bottom",
+          repo: giscusConfig.repo,
+          repoId: giscusConfig.repoId,
+          category: giscusConfig.category || "",
+          categoryId: giscusConfig.categoryId,
+          mapping: "specific",
+          term: term,
+          strict: "1",
+          number: "0",
+          description: "",
+          backLink: location.href,
+        });
+
+        const iframe = document.createElement("iframe");
+        iframe.className = "giscus-frame";
+        iframe.src =
+          "https://giscus.app/" +
+          encodeURIComponent(giscusConfig.lang) +
+          "/widget?" +
+          params.toString();
+        iframe.scrolling = "no";
+        iframe.loading = "lazy";
+        iframe.setAttribute("allow", "clipboard-write");
+        return iframe;
       };
+
+      /* Giscus sendet postMessage-Events für Größenänderungen */
+      window.addEventListener("message", (event) => {
+        if (event.origin !== "https://giscus.app") return;
+        if (!event.data || typeof event.data !== "object" || !event.data.giscus) return;
+
+        const { resizeHeight } = event.data.giscus;
+        if (typeof resizeHeight !== "number") return;
+
+        const frames = root.querySelectorAll("iframe.giscus-frame");
+        for (const f of frames) {
+          if (f.contentWindow === event.source) {
+            f.style.height = resizeHeight + "px";
+            break;
+          }
+        }
+      });
 
       const addThread = (topic) => {
         if (!topic || openTopics.has(topic)) return;
@@ -194,15 +223,10 @@
         loading.textContent = "Lade Kommentare…";
         giscusHost.appendChild(loading);
 
-        const observer = new MutationObserver(() => {
-          const frame = giscusHost.querySelector("iframe.giscus-frame");
-          if (!frame) return;
-          loading.remove();
-          observer.disconnect();
-        });
-        observer.observe(giscusHost, { childList: true, subtree: true });
+        const frame = createGiscusFrame(term);
+        frame.addEventListener("load", () => loading.remove(), { once: true });
+        giscusHost.appendChild(frame);
 
-        giscusHost.appendChild(createGiscusScript(term));
         body.appendChild(giscusHost);
 
         section.appendChild(header);

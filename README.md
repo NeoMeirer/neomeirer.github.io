@@ -69,7 +69,3 @@ My TODOs:
 
 - [ ] learn about markdown syntax (to write posts properly)
 - [ ] add posts and blogs
-
-git add .
-git commit -m "debug Chat"
-git push
