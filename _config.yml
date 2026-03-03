@@ -51,7 +51,7 @@ giscus:
   repo_id: "R_kgDOK-iy8Q"
   category: "General"
   category_id: "DIC_kwDOK-iy8c4C3dRd"
-  theme: "light"
+  theme: "https://neomeirer.github.io/assets/giscus-custom.css"
   lang: "de"
 
 # Optional defaults for the chat include

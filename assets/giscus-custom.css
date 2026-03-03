@@ -1,0 +1,12 @@
+@import url("https://giscus.app/themes/light.css");
+
+/* Hide the Preview tab in the comment form */
+.tabnav-tabs .tabnav-tab:nth-child(2) {
+  display: none !important;
+}
+
+/* Also hide via write/preview panel toggle (fallback) */
+.preview-tab,
+[data-tab="preview"] {
+  display: none !important;
+}
