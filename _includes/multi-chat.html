@@ -17,17 +17,17 @@
 <section class="chat-widget" id="{{ root_id }}">
   <h2>Chat</h2>
   <p class="chat-hint">
-    Wähle ein Thema oder starte ein neues. Schreiben/Antworten geht über GitHub (Login erforderlich).
+    Wähle ein Thema oder gib ein neues ein. Kommentieren geht über GitHub-Login.
   </p>
 
   {% unless giscus_ready %}
     <div class="chat-setup-warning">
-      <strong>Hinweis:</strong> Chat ist noch nicht konfiguriert. Bitte in <code>_config.yml</code> die Werte unter <code>giscus</code> (insb. <code>repo_id</code> und <code>category_id</code>) setzen.
+      <strong>Hinweis:</strong> Chat ist noch nicht konfiguriert.
+      Bitte in <code>_config.yml</code> die Werte unter <code>giscus</code> setzen.
     </div>
   {% endunless %}
 
   <div class="chat-controls" {% unless giscus_ready %}aria-disabled="true"{% endunless %}>
-    <label class="chat-label" for="{{ root_id }}-topic-select">Thema</label>
     <select id="{{ root_id }}-topic-select" class="chat-topic-select" {% unless giscus_ready %}disabled{% endunless %}>
       {% for topic in topics %}
         <option value="{{ topic | escape }}">{{ topic }}</option>
@@ -39,19 +39,12 @@
       class="chat-topic-input"
       type="text"
       inputmode="text"
-      placeholder="oder neues Thema (Titel) eingeben…"
+      placeholder="Neues Thema…"
       {% unless giscus_ready %}disabled{% endunless %}
     >
-
-    <button type="button" class="chat-btn chat-btn-primary" data-action="open" {% unless giscus_ready %}disabled{% endunless %}>
-      Öffnen
-    </button>
-    <button type="button" class="chat-btn" data-action="add" {% unless giscus_ready %}disabled{% endunless %}>
-      Zusätzlich öffnen
-    </button>
   </div>
 
-  <div class="chat-threads" aria-live="polite"></div>
+  <div class="chat-thread-container" aria-live="polite"></div>
 </section>
 
 {% if giscus_ready %}
@@ -72,92 +65,61 @@
       const termPrefix = {{ term_prefix | jsonify }};
       const select = root.querySelector(".chat-topic-select");
       const input = root.querySelector(".chat-topic-input");
-      const threads = root.querySelector(".chat-threads");
-      const openTopics = new Set();
-      const storageKey = `multi-chat:${root.id}:openTopics`;
+      const container = root.querySelector(".chat-thread-container");
+      const storageKey = "chat:" + root.id + ":topic";
 
-      const normalizeTopic = (value) =>
-        String(value || "")
-          .trim()
-          .replace(/\s+/g, " ")
-          .slice(0, 250);
+      let currentTopic = "";
+
+      const normalize = (v) =>
+        String(v || "").trim().replace(/\s+/g, " ").slice(0, 250);
 
       const toTerm = (topic) => {
-        const cleanTopic = normalizeTopic(topic);
-        const cleanPrefix = normalizeTopic(termPrefix);
-        if (!cleanPrefix) return cleanTopic;
-        if (!cleanTopic) return cleanPrefix;
-        return `${cleanPrefix} :: ${cleanTopic}`;
+        const t = normalize(topic);
+        const p = normalize(termPrefix);
+        if (!p) return t;
+        if (!t) return p;
+        return p + " :: " + t;
       };
 
-      const ensureOptionExists = (topic) => {
+      const ensureOption = (topic) => {
         if (!select || !topic) return;
-        const exists = Array.from(select.options || []).some((o) => o.value === topic);
-        if (exists) return;
+        if (Array.from(select.options).some((o) => o.value === topic)) return;
         const opt = document.createElement("option");
         opt.value = topic;
         opt.textContent = topic;
         select.appendChild(opt);
       };
 
-      const getRequestedTopic = () => {
-        const typed = normalizeTopic(input?.value);
-        if (typed) return typed;
-        return normalizeTopic(select?.value);
-      };
-
-      const loadState = () => {
-        try {
-          const raw = localStorage.getItem(storageKey);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) return null;
-          return parsed.map(normalizeTopic).filter(Boolean);
-        } catch {
-          return null;
-        }
-      };
-
-      const saveState = () => {
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(Array.from(openTopics)));
-        } catch {
-          // ignore (private mode / blocked storage)
-        }
-      };
-
-      /* ── Session-Token aus URL lesen (nach GitHub-OAuth-Redirect) ── */
+      /* Session (GitHub OAuth) */
       const getSession = () => {
         const url = new URL(location.href);
         const token = url.searchParams.get("giscus") || "";
         if (token) {
-          /* Token aus URL entfernen, damit es sauber aussieht */
           url.searchParams.delete("giscus");
           history.replaceState(null, "", url.toString());
-          try { localStorage.setItem("giscus-session", JSON.stringify(token)); } catch {}
+          try { localStorage.setItem("giscus-session", JSON.stringify(token)); } catch (e) {}
         }
         if (token) return token;
         try {
           const raw = localStorage.getItem("giscus-session");
           return raw ? JSON.parse(raw) : "";
-        } catch { return ""; }
+        } catch (e) { return ""; }
       };
       const giscusSession = getSession();
 
-      /* ── Giscus-Iframe direkt erstellen ── */
-      const createGiscusFrame = (term) => {
-        /* origin muss die Seiten-URL OHNE giscus-Parameter sein */
-        const cleanOrigin = (() => {
-          const u = new URL(location.href);
-          u.searchParams.delete("giscus");
-          return u.toString();
-        })();
+      const cleanOrigin = (() => {
+        const u = new URL(location.href);
+        u.searchParams.delete("giscus");
+        return u.toString();
+      })();
 
+      /* Iframe erstellen */
+      const createFrame = (term) => {
         const params = new URLSearchParams({
           origin: cleanOrigin,
           session: giscusSession,
           theme: giscusConfig.theme,
-          reactionsEnabled: "1",
+          reactionsEnabled: "0",
           emitMetadata: "0",
           inputPosition: "bottom",
           repo: giscusConfig.repo,
@@ -166,7 +128,7 @@
           categoryId: giscusConfig.categoryId,
           mapping: "specific",
           term: term,
-          strict: "1",
+          strict: "0",
           number: "0",
           description: "",
           backLink: cleanOrigin,
@@ -185,133 +147,64 @@
         return iframe;
       };
 
-      /* Giscus sendet postMessage-Events für Größenänderungen */
-      window.addEventListener("message", (event) => {
+      /* postMessage-Listener */
+      window.addEventListener("message", function(event) {
         if (event.origin !== "https://giscus.app") return;
         if (!event.data || typeof event.data !== "object" || !event.data.giscus) return;
 
-        const { resizeHeight, signOut } = event.data.giscus;
-
-        /* Login/Logout: Seite neu laden damit alle Iframes die Session erhalten */
-        if (event.data.giscus.signIn) {
-          /* Nach Login-Redirect werden alle Iframes automatisch refreshed */
+        var msg = event.data.giscus;
+        if (msg.signOut) {
+          try { localStorage.removeItem("giscus-session"); } catch (e) {}
         }
-        if (signOut) {
-          try { localStorage.removeItem("giscus-session"); } catch {}
-        }
-
-        if (typeof resizeHeight === "number") {
-          const frames = root.querySelectorAll("iframe.giscus-frame");
-          for (const f of frames) {
-            if (f.contentWindow === event.source) {
-              f.style.height = resizeHeight + "px";
+        if (typeof msg.resizeHeight === "number") {
+          var frames = root.querySelectorAll("iframe.giscus-frame");
+          for (var i = 0; i < frames.length; i++) {
+            if (frames[i].contentWindow === event.source) {
+              frames[i].style.height = msg.resizeHeight + "px";
               break;
             }
           }
         }
       });
 
-      const addThread = (topic) => {
-        if (!topic || openTopics.has(topic)) return;
-        ensureOptionExists(topic);
-        openTopics.add(topic);
-        const term = toTerm(topic);
+      /* Thema oeffnen */
+      const openTopic = (topic) => {
+        if (!topic || topic === currentTopic) return;
+        currentTopic = topic;
+        ensureOption(topic);
+        if (select) select.value = topic;
 
-        const section = document.createElement("section");
-        section.className = "chat-thread";
-        section.dataset.term = term;
+        container.innerHTML = "";
+        const frame = createFrame(toTerm(topic));
+        container.appendChild(frame);
 
-        const header = document.createElement("div");
-        header.className = "chat-thread-header";
+        try { localStorage.setItem(storageKey, topic); } catch (e) {}
+      };
 
-        const title = document.createElement("div");
-        title.className = "chat-thread-title";
-        title.textContent = topic;
-
-        const close = document.createElement("button");
-        close.type = "button";
-        close.className = "chat-thread-close";
-        close.textContent = "Schließen";
-        close.addEventListener("click", () => {
-          openTopics.delete(topic);
-          section.remove();
-          saveState();
+      /* Events */
+      if (select) {
+        select.addEventListener("change", function() {
+          if (input) input.value = "";
+          openTopic(normalize(select.value));
         });
-
-        header.appendChild(title);
-        header.appendChild(close);
-
-        const body = document.createElement("div");
-        body.className = "chat-thread-body";
-
-        const meta = document.createElement("div");
-        meta.className = "chat-thread-meta";
-        meta.textContent = `Discussion-Titel: ${term}`;
-        body.appendChild(meta);
-
-        const giscusHost = document.createElement("div");
-        giscusHost.className = "giscus";
-
-        const loading = document.createElement("div");
-        loading.className = "chat-loading";
-        loading.textContent = "Lade Kommentare…";
-        giscusHost.appendChild(loading);
-
-        const frame = createGiscusFrame(term);
-        frame.addEventListener("load", () => loading.remove(), { once: true });
-        giscusHost.appendChild(frame);
-
-        body.appendChild(giscusHost);
-
-        section.appendChild(header);
-        section.appendChild(body);
-        threads.appendChild(section);
-        saveState();
-      };
-
-      const openSingle = (topic) => {
-        ensureOptionExists(topic);
-        threads.innerHTML = "";
-        openTopics.clear();
-        addThread(topic);
-        saveState();
-      };
-
-      root.addEventListener("click", (event) => {
-        const button = event.target?.closest?.("button[data-action]");
-        if (!button) return;
-
-        const action = button.getAttribute("data-action");
-        const topic = getRequestedTopic();
-        if (!topic) return;
-
-        if (input) input.value = "";
-        if (action === "open") openSingle(topic);
-        if (action === "add") addThread(topic);
-      });
-
-      select?.addEventListener?.("change", () => {
-        if (input) input.value = "";
-        const topic = getRequestedTopic();
-        if (topic) openSingle(topic);
-      });
-
-      input?.addEventListener?.("keydown", (e) => {
-        if (e.key !== "Enter") return;
-        const topic = getRequestedTopic();
-        if (!topic) return;
-        e.preventDefault();
-        openSingle(topic);
-      });
-
-      const restored = loadState();
-      if (restored && restored.length) {
-        openSingle(restored[0]);
-        for (const topic of restored.slice(1)) addThread(topic);
-      } else {
-        const initial = normalizeTopic(select?.value);
-        if (initial) openSingle(initial);
       }
+
+      if (input) {
+        input.addEventListener("keydown", function(e) {
+          if (e.key !== "Enter") return;
+          var topic = normalize(input.value);
+          if (!topic) return;
+          e.preventDefault();
+          input.value = "";
+          openTopic(topic);
+        });
+      }
+
+      /* Initialisierung */
+      var saved = "";
+      try { saved = localStorage.getItem(storageKey) || ""; } catch (e) {}
+      var initial = normalize(saved) || normalize(select ? select.value : "");
+      if (initial) openTopic(initial);
     })();
   </script>
 {% endif %}
