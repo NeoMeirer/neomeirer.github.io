@@ -1,0 +1,177 @@
+---
+layout: default
+---
+
+<div class="kicker-app">
+  <h1>🏆 Kicker Liga</h1>
+  
+  <section>
+    <h2>Spieler anlegen</h2>
+    <input type="text" id="playerName" placeholder="Name">
+    <button onclick="addPlayer()">Hinzufügen</button>
+  </section>
+
+  <section>
+    <h2>Spiel eintragen</h2>
+    <div class="game-form">
+      <div class="team-input">
+        <h3>Team 1</h3>
+        <select id="t1p1"></select>
+        <select id="t1p2"></select>
+        <input type="number" id="s1" placeholder="Tore Team 1">
+      </div>
+      <div class="team-input">
+        <h3>Team 2</h3>
+        <select id="t2p1"></select>
+        <select id="t2p2"></select>
+        <input type="number" id="s2" placeholder="Tore Team 2">
+      </div>
+      <button onclick="addGame()" class="submit-btn">Spiel speichern</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Rangliste</h2>
+    <div id="stats"></div>
+  </section>
+
+  <section>
+    <h2>Letzte Spiele</h2>
+    <div id="history"></div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://qqoxwxomidrdkwhwndcg.supabase.co';
+  const SUPABASE_KEY = 'YOUR_ANON_KEY'; 
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  async function addPlayer() {
+    const name = document.getElementById('playerName').value.trim();
+    if (!name) return;
+    const { error } = await supabaseClient.from('players').insert([{ name }]);
+    if (error) alert(error.message);
+    else { document.getElementById('playerName').value = ''; loadAll(); }
+  }
+
+  async function addGame() {
+    const game = {
+      team1_player1: document.getElementById('t1p1').value,
+      team1_player2: document.getElementById('t1p2').value || null,
+      team2_player1: document.getElementById('t2p1').value,
+      team2_player2: document.getElementById('t2p2').value || null,
+      score_team1: parseInt(document.getElementById('s1').value),
+      score_team2: parseInt(document.getElementById('s2').value)
+    };
+    if (!game.team1_player1 || !game.team2_player1 || isNaN(game.score_team1) || isNaN(game.score_team2)) {
+      alert("Bitte fülle alle nötigen Felder aus (mind. 1 Spieler pro Team + Ergebnis).");
+      return;
+    }
+    const { error } = await supabaseClient.from('games').insert([game]);
+    if (error) alert(error.message);
+    else { 
+      document.getElementById('s1').value = ''; 
+      document.getElementById('s2').value = '';
+      loadAll(); 
+    }
+  }
+
+  async function loadAll() {
+    const { data: players } = await supabaseClient.from('players').select('*');
+    const { data: games } = await supabaseClient.from('games').select('*').order('played_at', { ascending: false });
+    
+    if (players) {
+      const selects = ['t1p1', 't1p2', 't2p1', 't2p2'];
+      selects.forEach(s => {
+        const el = document.getElementById(s);
+        const currentVal = el.value;
+        el.innerHTML = '<option value="">- Spieler wählen -</option>';
+        players.sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
+          el.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+        });
+        el.value = currentVal;
+      });
+      calculateStats(players, games || []);
+      renderHistory(games || [], players);
+    }
+  }
+
+  function calculateStats(players, games) {
+    const stats = players.map(p => ({ id: p.id, name: p.name, wins: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 }));
+    
+    games.forEach(g => {
+      const team1 = [g.team1_player1, g.team1_player2].filter(id => id);
+      const team2 = [g.team2_player1, g.team2_player2].filter(id => id);
+      const winTeam = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
+
+      team1.forEach(pid => {
+        const s = stats.find(st => st.id === pid);
+        if (s) {
+          if (winTeam === 1) s.wins++; else if (winTeam === 2) s.losses++;
+          s.goalsFor += g.score_team1;
+          s.goalsAgainst += g.score_team2;
+        }
+      });
+      team2.forEach(pid => {
+        const s = stats.find(st => st.id === pid);
+        if (s) {
+          if (winTeam === 2) s.wins++; else if (winTeam === 1) s.losses++;
+          s.goalsFor += g.score_team2;
+          s.goalsAgainst += g.score_team1;
+        }
+      });
+    });
+
+    stats.sort((a,b) => {
+      const wrA = a.wins / (a.wins + a.losses || 1);
+      const wrB = b.wins / (b.wins + b.losses || 1);
+      if (wrB !== wrA) return wrB - wrA;
+      return (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst);
+    });
+
+    let html = '<table><thead><tr><th>Spieler</th><th>S/N</th><th>Win %</th><th>Tordiff.</th></tr></thead><tbody>';
+    stats.forEach(s => {
+      const total = s.wins + s.losses;
+      const rate = total ? (s.wins/total*100).toFixed(1) : "0.0";
+      html += `<tr><td>${s.name}</td><td>${s.wins}/${s.losses}</td><td>${rate}%</td><td>${s.goalsFor - s.goalsAgainst}</td></tr>`;
+    });
+    document.getElementById('stats').innerHTML = html + '</tbody></table>';
+  }
+
+  function renderHistory(games, players) {
+    const getName = id => players.find(p => p.id === id)?.name || '';
+    document.getElementById('history').innerHTML = games.map(g => {
+      const t1 = [getName(g.team1_player1), getName(g.team1_player2)].filter(n => n).join(' & ');
+      const t2 = [getName(g.team2_player1), getName(g.team2_player2)].filter(n => n).join(' & ');
+      return `<div class="game-row">
+        <span class="teams">${t1}</span> 
+        <span class="score">${g.score_team1} : ${g.score_team2}</span> 
+        <span class="teams">${t2}</span>
+      </div>`;
+    }).join('');
+  }
+
+  loadAll();
+</script>
+
+<style>
+  .kicker-app { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #333; }
+  h1 { text-align: center; color: #2c3e50; }
+  section { background: white; padding: 25px; margin-bottom: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+  h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; font-size: 1.5em; }
+  input, select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin: 5px 0; font-size: 14px; }
+  button { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+  button:hover { background: #2980b9; }
+  .game-form .team-input { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+  .game-form h3 { margin-top: 0; font-size: 1.1em; color: #7f8c8d; }
+  .submit-btn { width: 100%; font-weight: bold; font-size: 1.1em; background: #27ae60; }
+  .submit-btn:hover { background: #219150; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+  th { background: #f8f9fa; font-weight: 600; }
+  .game-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+  .game-row .teams { flex: 1; font-size: 0.95em; }
+  .game-row .score { font-weight: bold; background: #eee; padding: 4px 12px; border-radius: 20px; margin: 0 15px; min-width: 60px; text-align: center; }
+  @media (max-width: 600px) { .game-row { flex-direction: column; text-align: center; } .game-row .score { margin: 10px 0; } }
+</style>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo
