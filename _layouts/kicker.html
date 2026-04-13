@@ -1,10 +1,8 @@
 ---
 layout: default
 ---
-
 <div class="kicker-app">
   <h1>🏆 Kicker Liga</h1>
-  
   <section>
     <h2>Spieler anlegen</h2>
     <div class="input-group">
@@ -12,7 +10,6 @@ layout: default
       <button onclick="addPlayer()">Hinzufügen</button>
     </div>
   </section>
-
   <section>
     <h2>Spiel eintragen</h2>
     <div class="game-form">
@@ -31,140 +28,98 @@ layout: default
       <button onclick="addGame()" class="submit-btn">Spiel speichern</button>
     </div>
   </section>
-
   <section>
     <h2>Rangliste</h2>
     <div id="stats">Lädt...</div>
   </section>
-
   <section>
     <h2>Letzte Spiele</h2>
     <div id="history">Keine Spiele eingetragen.</div>
   </section>
 </div>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  const SUPABASE_URL = 'https://qqoxwxomidrdkwhwndcg.supabase.co';
-  const SUPABASE_KEY = 'YOUR_ANON_KEY'; 
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  async function addPlayer() {
-    const name = document.getElementById('playerName').value.trim();
-    if (!name) return;
-    const { error } = await sb.from('players').insert([{ name }]);
-    if (error) alert(error.message);
-    else { document.getElementById('playerName').value = ''; loadAll(); }
+const sb = supabase.createClient(
+  'https://qqoxwxomidrdkwhwndcg.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo'
+);
+async function addPlayer() {
+  const name = document.getElementById('playerName').value.trim();
+  if (!name) return;
+  const { error } = await sb.from('players').insert([{ name }]);
+  if (error) alert(error.message);
+  else { document.getElementById('playerName').value = ''; loadAll(); }
+}
+async function addGame() {
+  const game = {
+    team1_player1: document.getElementById('t1p1').value,
+    team1_player2: document.getElementById('t1p2').value || null,
+    team2_player1: document.getElementById('t2p1').value,
+    team2_player2: document.getElementById('t2p2').value || null,
+    score_team1: parseInt(document.getElementById('s1').value),
+    score_team2: parseInt(document.getElementById('s2').value)
+  };
+  if (!game.team1_player1 || !game.team2_player1 || isNaN(game.score_team1) || isNaN(game.score_team2)) {
+    alert('Bitte fülle alle Felder aus (mind. 1 Spieler pro Team + Ergebnis).');
+    return;
   }
-
-  async function addGame() {
-    const game = {
-      team1_player1: document.getElementById('t1p1').value,
-      team1_player2: document.getElementById('t1p2').value || null,
-      team2_player1: document.getElementById('t2p1').value,
-      team2_player2: document.getElementById('t2p2').value || null,
-      score_team1: parseInt(document.getElementById('s1').value),
-      score_team2: parseInt(document.getElementById('s2').value)
-    };
-    if (!game.team1_player1 || !game.team2_player1 || isNaN(game.score_team1) || isNaN(game.score_team2)) {
-      alert("Bitte fülle alle nötigen Felder aus (mind. 1 Spieler pro Team + Ergebnis).");
-      return;
-    }
-    const { error } = await sb.from('games').insert([game]);
-    if (error) alert(error.message);
-    else { 
-      document.getElementById('s1').value = ''; 
-      document.getElementById('s2').value = '';
-      loadAll(); 
-    }
-  }
-
-  async function loadAll() {
-    const { data: players } = await sb.from('players').select('*');
-    const { data: games } = await sb.from('games').select('*').order('played_at', { ascending: false });
-    
-    if (players) {
-      const selects = ['t1p1', 't1p2', 't2p1', 't2p2'];
-      selects.forEach(sId => {
-        const el = document.getElementById(sId);
-        const currentVal = el.value;
-        el.innerHTML = '<option value="">- Spieler wählen -</option>';
-        players.sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
-          el.innerHTML += `<option value="${p.id}">${p.name}</option>`;
-        });
-        el.value = currentVal;
-      });
-      calculateStats(players, games || []);
-      renderHistory(games || [], players);
-    }
-  }
-
-  function calculateStats(players, games) {
-    const statsMap = new Map();
-    players.forEach(p => statsMap.set(p.id, { name: p.name, wins: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 }));
-    
-    games.forEach(g => {
-      const team1 = [g.team1_player1, g.team1_player2].filter(Boolean);
-      const team2 = [g.team2_player1, g.team2_player2].filter(Boolean);
-      const winTeam = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
-
-      team1.forEach(pid => {
-        const s = statsMap.get(pid);
-        if (s) {
-          if (winTeam === 1) s.wins++; else if (winTeam === 2) s.losses++;
-          s.goalsFor += g.score_team1; s.goalsAgainst += g.score_team2;
-        }
-      });
-      team2.forEach(pid => {
-        const s = statsMap.get(pid);
-        if (s) {
-          if (winTeam === 2) s.wins++; else if (winTeam === 1) s.losses++;
-          s.goalsFor += g.score_team2; s.goalsAgainst += g.score_team1;
-        }
-      });
-    });
-
-    const stats = Array.from(statsMap.values()).sort((a,b) => {
-      const wrA = a.wins / (a.wins + a.losses || 1);
-      const wrB = b.wins / (b.wins + b.losses || 1);
-      return wrB - wrA || (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst);
-    });
-
-    let html = '<table><thead><tr><th>Spieler</th><th>S/N</th><th>Win %</th><th>Tordiff.</th></tr></thead><tbody>';
-    stats.forEach(s => {
-      const total = s.wins + s.losses;
-      const rate = total ? (s.wins/total*100).toFixed(1) : "0.0";
-      html += `<tr><td>${s.name}</td><td>${s.wins}/${s.losses}</td><td>${rate}%</td><td>${s.goalsFor - s.goalsAgainst}</td></tr>`;
-    });
-    document.getElementById('stats').innerHTML = html + '</tbody></table>';
-  }
-
-  function renderHistory(games, players) {
-    if (games.length === 0) return;
-    const getName = id => players.find(p => p.id === id)?.name || '';
-    document.getElementById('history').innerHTML = games.map(g => {
-      const t1 = [getName(g.team1_player1), getName(g.team1_player2)].filter(Boolean).join(' & ');
-      const t2 = [getName(g.team2_player1), getName(g.team2_player2)].filter(Boolean).join(' & ');
-      return `<div class="game-row"><span class="teams">${t1}</span><span class="score">${g.score_team1}:${g.score_team2}</span><span class="teams">${t2}</span></div>`;
-    }).join('');
-  }
-
-  loadAll();
+  const { error } = await sb.from('games').insert([game]);
+  if (error) alert(error.message);
+  else { document.getElementById('s1').value=''; document.getElementById('s2').value=''; loadAll(); }
+}
+async function loadAll() {
+  const { data: players } = await sb.from('players').select('*');
+  const { data: games } = await sb.from('games').select('*').order('played_at',{ascending:false});
+  if (!players) return;
+  ['t1p1','t1p2','t2p1','t2p2'].forEach(sId => {
+    const el = document.getElementById(sId);
+    const v = el.value;
+    el.innerHTML = '<option value="">- Spieler wählen -</option>';
+    players.sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{ el.innerHTML += '<option value="'+p.id+'">'+p.name+'</option>'; });
+    el.value = v;
+  });
+  buildStats(players, games||[]);
+  buildHistory(games||[], players);
+}
+function buildStats(players, games) {
+  const m = new Map();
+  players.forEach(p=>m.set(p.id,{name:p.name,w:0,l:0,gf:0,ga:0}));
+  games.forEach(g=>{
+    const t1=[g.team1_player1,g.team1_player2].filter(Boolean);
+    const t2=[g.team2_player1,g.team2_player2].filter(Boolean);
+    const wt=g.score_team1>g.score_team2?1:(g.score_team2>g.score_team1?2:0);
+    t1.forEach(id=>{const s=m.get(id);if(s){if(wt===1)s.w++;else if(wt===2)s.l++;s.gf+=g.score_team1;s.ga+=g.score_team2;}});
+    t2.forEach(id=>{const s=m.get(id);if(s){if(wt===2)s.w++;else if(wt===1)s.l++;s.gf+=g.score_team2;s.ga+=g.score_team1;}});
+  });
+  const arr=Array.from(m.values()).sort((a,b)=>{const wa=a.w/(a.w+a.l||1),wb=b.w/(b.w+b.l||1);return wb-wa||(b.gf-b.ga)-(a.gf-a.ga);});
+  let h='<table><thead><tr><th>Spieler</th><th>S/N</th><th>Win%</th><th>Tordiff</th></tr></thead><tbody>';
+  arr.forEach(s=>{const t=s.w+s.l;const r=t?(s.w/t*100).toFixed(1):'0.0';h+='<tr><td>'+s.name+'</td><td>'+s.w+'/'+s.l+'</td><td>'+r+'%</td><td>'+(s.gf-s.ga)+'</td></tr>';});
+  document.getElementById('stats').innerHTML=h+'</tbody></table>';
+}
+function buildHistory(games,players) {
+  if(!games.length){document.getElementById('history').innerHTML='Keine Spiele eingetragen.';return;}
+  const gn=id=>players.find(p=>p.id===id)?.name||'';
+  document.getElementById('history').innerHTML=games.map(g=>{
+    const t1=[gn(g.team1_player1),gn(g.team1_player2)].filter(Boolean).join(' & ');
+    const t2=[gn(g.team2_player1),gn(g.team2_player2)].filter(Boolean).join(' & ');
+    return '<div class="game-row"><span class="teams">'+t1+'</span><span class="score">'+g.score_team1+':'+g.score_team2+'</span><span class="teams">'+t2+'</span></div>';
+  }).join('');
+}
+loadAll();
 </script>
-
 <style>
-  .kicker-app { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
-  h1 { text-align: center; color: #2c3e50; }
-  section { background: #fff; padding: 25px; margin-bottom: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-  h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; }
-  .input-group { display: flex; gap: 10px; }
-  input, select { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
-  button { padding: 10px 20px; background: #3498db; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
-  .submit-btn { width: 100%; font-weight: bold; background: #27ae60; margin-top: 10px; }
-  .team-input { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
-  .game-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
-  .score { font-weight: bold; background: #eee; padding: 4px 12px; border-radius: 20px; }
-  .teams { flex: 1; }
-</style>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo
+.kicker-app{font-family:-apple-system,system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px}
+h1{text-align:center;color:#2c3e50}
+section{background:#fff;padding:25px;margin-bottom:30px;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,.1)}
+h2{border-bottom:2px solid #eee;padding-bottom:10px;margin-top:0}
+.input-group{display:flex;gap:10px}
+input,select{flex:1;padding:10px;border:1px solid #ddd;border-radius:6px}
+button{padding:10px 20px;background:#3498db;color:#fff;border:none;border-radius:6px;cursor:pointer}
+.submit-btn{width:100%;font-weight:bold;background:#27ae60;margin-top:10px}
+.team-input{background:#f9f9f9;padding:15px;border-radius:8px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:12px;border-bottom:1px solid #eee}
+.game-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee}
+.score{font-weight:bold;background:#eee;padding:4px 12px;border-radius:20px}
+.teams{flex:1}
+</style>
