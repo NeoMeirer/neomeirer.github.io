@@ -13,10 +13,10 @@ ALTER TABLE players ADD COLUMN IF NOT EXISTS elo NUMERIC DEFAULT 1000;
   <h1>🏆 Kicker Liga Pro</h1>
   
   <nav class="main-tabs">
-    <button onclick="switchTab('stats')" class="active">Stats</button>
-    <button onclick="switchTab('charts')">Visualisierung</button>
-    <button onclick="switchTab('history')">Spiele</button>
-    <button onclick="switchTab('admin')" id="admin-tab-btn" style="display:none;">Admin</button>
+    <button onclick="switchTab('stats', this)" class="active">Stats</button>
+    <button onclick="switchTab('charts'), this">Visualisierung</button>
+    <button onclick="switchTab('history', this)">Spiele</button>
+    <button onclick="switchTab('admin', this)" id="admin-tab-btn" style="display:none;">Admin</button>
   </nav>
 
   <section id="login-section">
@@ -105,11 +105,11 @@ let players = [];
 let games = [];
 let charts = {};
 
-function switchTab(tabId) {
+function switchTab(tabId, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.main-tabs button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + tabId).classList.add('active');
-  event.target.classList.add('active');
+  btn.tlassList.add('active');
 }
 
 async function login() {
