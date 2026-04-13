@@ -7,8 +7,10 @@ layout: default
   
   <section>
     <h2>Spieler anlegen</h2>
-    <input type="text" id="playerName" placeholder="Name">
-    <button onclick="addPlayer()">Hinzufügen</button>
+    <div class="input-group">
+      <input type="text" id="playerName" placeholder="Name">
+      <button onclick="addPlayer()">Hinzufügen</button>
+    </div>
   </section>
 
   <section>
@@ -32,12 +34,12 @@ layout: default
 
   <section>
     <h2>Rangliste</h2>
-    <div id="stats"></div>
+    <div id="stats">Lädt...</div>
   </section>
 
   <section>
     <h2>Letzte Spiele</h2>
-    <div id="history"></div>
+    <div id="history">Keine Spiele eingetragen.</div>
   </section>
 </div>
 
@@ -45,12 +47,12 @@ layout: default
 <script>
   const SUPABASE_URL = 'https://qqoxwxomidrdkwhwndcg.supabase.co';
   const SUPABASE_KEY = 'YOUR_ANON_KEY'; 
-  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   async function addPlayer() {
     const name = document.getElementById('playerName').value.trim();
     if (!name) return;
-    const { error } = await supabaseClient.from('players').insert([{ name }]);
+    const { error } = await sb.from('players').insert([{ name }]);
     if (error) alert(error.message);
     else { document.getElementById('playerName').value = ''; loadAll(); }
   }
@@ -68,7 +70,7 @@ layout: default
       alert("Bitte fülle alle nötigen Felder aus (mind. 1 Spieler pro Team + Ergebnis).");
       return;
     }
-    const { error } = await supabaseClient.from('games').insert([game]);
+    const { error } = await sb.from('games').insert([game]);
     if (error) alert(error.message);
     else { 
       document.getElementById('s1').value = ''; 
@@ -78,13 +80,13 @@ layout: default
   }
 
   async function loadAll() {
-    const { data: players } = await supabaseClient.from('players').select('*');
-    const { data: games } = await supabaseClient.from('games').select('*').order('played_at', { ascending: false });
+    const { data: players } = await sb.from('players').select('*');
+    const { data: games } = await sb.from('games').select('*').order('played_at', { ascending: false });
     
     if (players) {
       const selects = ['t1p1', 't1p2', 't2p1', 't2p2'];
-      selects.forEach(s => {
-        const el = document.getElementById(s);
+      selects.forEach(sId => {
+        const el = document.getElementById(sId);
         const currentVal = el.value;
         el.innerHTML = '<option value="">- Spieler wählen -</option>';
         players.sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
@@ -98,36 +100,34 @@ layout: default
   }
 
   function calculateStats(players, games) {
-    const stats = players.map(p => ({ id: p.id, name: p.name, wins: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 }));
+    const statsMap = new Map();
+    players.forEach(p => statsMap.set(p.id, { name: p.name, wins: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 }));
     
     games.forEach(g => {
-      const team1 = [g.team1_player1, g.team1_player2].filter(id => id);
-      const team2 = [g.team2_player1, g.team2_player2].filter(id => id);
+      const team1 = [g.team1_player1, g.team1_player2].filter(Boolean);
+      const team2 = [g.team2_player1, g.team2_player2].filter(Boolean);
       const winTeam = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
 
       team1.forEach(pid => {
-        const s = stats.find(st => st.id === pid);
+        const s = statsMap.get(pid);
         if (s) {
           if (winTeam === 1) s.wins++; else if (winTeam === 2) s.losses++;
-          s.goalsFor += g.score_team1;
-          s.goalsAgainst += g.score_team2;
+          s.goalsFor += g.score_team1; s.goalsAgainst += g.score_team2;
         }
       });
       team2.forEach(pid => {
-        const s = stats.find(st => st.id === pid);
+        const s = statsMap.get(pid);
         if (s) {
           if (winTeam === 2) s.wins++; else if (winTeam === 1) s.losses++;
-          s.goalsFor += g.score_team2;
-          s.goalsAgainst += g.score_team1;
+          s.goalsFor += g.score_team2; s.goalsAgainst += g.score_team1;
         }
       });
     });
 
-    stats.sort((a,b) => {
+    const stats = Array.from(statsMap.values()).sort((a,b) => {
       const wrA = a.wins / (a.wins + a.losses || 1);
       const wrB = b.wins / (b.wins + b.losses || 1);
-      if (wrB !== wrA) return wrB - wrA;
-      return (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst);
+      return wrB - wrA || (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst);
     });
 
     let html = '<table><thead><tr><th>Spieler</th><th>S/N</th><th>Win %</th><th>Tordiff.</th></tr></thead><tbody>';
@@ -140,15 +140,12 @@ layout: default
   }
 
   function renderHistory(games, players) {
+    if (games.length === 0) return;
     const getName = id => players.find(p => p.id === id)?.name || '';
     document.getElementById('history').innerHTML = games.map(g => {
-      const t1 = [getName(g.team1_player1), getName(g.team1_player2)].filter(n => n).join(' & ');
-      const t2 = [getName(g.team2_player1), getName(g.team2_player2)].filter(n => n).join(' & ');
-      return `<div class="game-row">
-        <span class="teams">${t1}</span> 
-        <span class="score">${g.score_team1} : ${g.score_team2}</span> 
-        <span class="teams">${t2}</span>
-      </div>`;
+      const t1 = [getName(g.team1_player1), getName(g.team1_player2)].filter(Boolean).join(' & ');
+      const t2 = [getName(g.team2_player1), getName(g.team2_player2)].filter(Boolean).join(' & ');
+      return `<div class="game-row"><span class="teams">${t1}</span><span class="score">${g.score_team1}:${g.score_team2}</span><span class="teams">${t2}</span></div>`;
     }).join('');
   }
 
@@ -156,22 +153,18 @@ layout: default
 </script>
 
 <style>
-  .kicker-app { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #333; }
+  .kicker-app { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
   h1 { text-align: center; color: #2c3e50; }
-  section { background: white; padding: 25px; margin-bottom: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-  h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; font-size: 1.5em; }
-  input, select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin: 5px 0; font-size: 14px; }
-  button { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
-  button:hover { background: #2980b9; }
-  .game-form .team-input { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-  .game-form h3 { margin-top: 0; font-size: 1.1em; color: #7f8c8d; }
-  .submit-btn { width: 100%; font-weight: bold; font-size: 1.1em; background: #27ae60; }
-  .submit-btn:hover { background: #219150; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  section { background: #fff; padding: 25px; margin-bottom: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+  h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; }
+  .input-group { display: flex; gap: 10px; }
+  input, select { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+  button { padding: 10px 20px; background: #3498db; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+  .submit-btn { width: 100%; font-weight: bold; background: #27ae60; margin-top: 10px; }
+  .team-input { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
-  th { background: #f8f9fa; font-weight: 600; }
-  .game-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
-  .game-row .teams { flex: 1; font-size: 0.95em; }
-  .game-row .score { font-weight: bold; background: #eee; padding: 4px 12px; border-radius: 20px; margin: 0 15px; min-width: 60px; text-align: center; }
-  @media (max-width: 600px) { .game-row { flex-direction: column; text-align: center; } .game-row .score { margin: 10px 0; } }
+  .game-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+  .score { font-weight: bold; background: #eee; padding: 4px 12px; border-radius: 20px; }
+  .teams { flex: 1; }
 </style>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo
