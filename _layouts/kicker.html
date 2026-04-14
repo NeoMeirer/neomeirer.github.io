@@ -166,24 +166,20 @@ layout: default
     loadAll();
   }
 
-  // FIXED E5: Nach Logout wurden players/games Arrays nicht geleert.
-  // → Stats-Tab zeigte nach Logout noch alte Daten.
-  // Jetzt: Arrays leeren + Stats/History neu rendern (zeigen "Keine Daten").
+  // FIXED: Nach Logout UI-Tabs zurücksetzen und Daten neu laden (anon-Lesezugriff bleibt).
+  // Vorher: Arrays wurden geleert → Stats/Charts leer nach Logout.
+  // Jetzt: loadAll() neu aufrufen — anon-Rolle hat SELECT-Rechte, Daten bleiben sichtbar.
   async function logout() {
     await sb.auth.signOut();
     role = null;
-    players = [];
-    games = [];
-    renderStats();
-    renderHistory();
-    if (charts.elo) { charts.elo.destroy(); charts.elo = null; }
-    if (charts.radar) { charts.radar.destroy(); charts.radar = null; }
     document.getElementById('admin-tab-btn').style.display = 'none';
     document.getElementById('play-tab-btn').style.display = 'none';
     document.getElementById('logout-btn').style.display = 'none';
     document.getElementById('login-section').style.display = 'block';
     document.getElementById('login-email').value = '';
     document.getElementById('login-pass').value = '';
+    // Daten neu laden (als anon) damit Stats/Charts weiterhin sichtbar sind
+    loadAll();
   }
 
   // FIXED: Pagination hinzugefügt — Supabase gibt standardmäßig nur 1000 Zeilen zurück.
