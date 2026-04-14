@@ -12,16 +12,20 @@ layout: default
     <button onclick="switchTab('history', this)">Spiele</button>
     <button onclick="switchTab('admin', this)" id="admin-tab-btn" style="display:none;">Admin</button>
     <button onclick="switchTab('play', this)" id="play-tab-btn" style="display:none;">Eintragen</button>
+    <button onclick="logout()" id="logout-btn" style="display:none;">Logout</button>
   </nav>
 
   <section id="login-section">
     <div class="login-card">
       <h3>🔐 Anmelden</h3>
       <div class="input-group">
-        <input type="password" id="login-pass" placeholder="Passwort" onkeydown="if(event.key==='Enter') login()">
-        <button onclick="login()">Login</button>
+        <input type="email" id="login-email" placeholder="E-Mail" onkeydown="if(event.key==='Enter') login()">
       </div>
-      <p class="login-hint">Passwort: 'kicker' zum Eintragen, 'admin123' für Admin-Tools.</p>
+      <div class="input-group">
+        <input type="password" id="login-pass" placeholder="Passwort" onkeydown="if(event.key==='Enter') login()">
+      </div>
+      <button onclick="login()">Login</button>
+      <p id="login-error" style="color:#e74c3c; display:none; margin-top:8px;"></p>
     </div>
   </section>
 
@@ -100,6 +104,11 @@ layout: default
   const sb = supabase.createClient('https://qqoxwxomidrdkwhwndcg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo');
   let role = null, players = [], games = [], charts = {};
 
+  // Role is determined by the user's email after Supabase Auth login.
+  // - Emails in the "admins" table → role = 'admin'
+  // - All other authenticated users → role = 'player'
+  // Passwords are stored securely in Supabase Auth, never in this code.
+
   function renderCharts() {
     renderEloChart();
     renderH2H();
@@ -115,20 +124,43 @@ layout: default
   }
 
   async function login() {
+    const email = document.getElementById('login-email').value.trim();
     const pass = document.getElementById('login-pass').value;
-    if (pass === 'admin123') {
-      role = 'admin';
+    const errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      errEl.textContent = 'Falsches Passwort oder E-Mail.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    // Determine role: check if email is in the admins table
+    const { data: adminRow } = await sb.from('admins').select('email').eq('email', email).maybeSingle();
+    role = adminRow ? 'admin' : 'player';
+
+    if (role === 'admin') {
       document.getElementById('admin-tab-btn').style.display = 'inline-block';
-      document.getElementById('play-tab-btn').style.display = 'inline-block';
-      document.getElementById('login-section').style.display = 'none';
-      switchTab('stats', document.querySelector('.main-tabs button'));
-    } else if (pass === 'kicker') {
-      role = 'player';
-      document.getElementById('play-tab-btn').style.display = 'inline-block';
-      document.getElementById('login-section').style.display = 'none';
-      switchTab('play', document.getElementById('play-tab-btn'));
-    } else return alert('Falsches Passwort');
+    }
+    document.getElementById('play-tab-btn').style.display = 'inline-block';
+    document.getElementById('logout-btn').style.display = 'inline-block';
+    document.getElementById('login-section').style.display = 'none';
+
+    const startTab = role === 'admin' ? 'stats' : 'play';
+    switchTab(startTab, document.querySelector('.main-tabs button'));
     loadAll();
+  }
+
+  async function logout() {
+    await sb.auth.signOut();
+    role = null;
+    document.getElementById('admin-tab-btn').style.display = 'none';
+    document.getElementById('play-tab-btn').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
+    document.getElementById('login-section').style.display = 'block';
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-pass').value = '';
   }
 
   async function loadAll() {
@@ -221,7 +253,7 @@ layout: default
     let h = '<table><thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Win%</th><th>Diff</th><th>Streak</th></tr></thead><tbody>';
     stats.forEach((s, i) => {
       const m = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
-      h += `<tr><td>${m}</td><td><strong>${s.name}</strong></td><td><span class="elo-badge">${Math.round(s.elo)}</span></td><td>${s.wr}%</td><td class="${s.gf-s.ga>=0?'text-green':'text-red'}">${s.gf-s.ga}</td><td class="${s.streak>0?'text-green':(s.streak<0?'text-red':'')}">${s.streak>0?`+${s.streak}🔥`:s.streak<0?`${s.streak}❄️`:'—'}</td></tr>`;
+      h += `<tr><td>${m}</td><td><strong>${s.name}</strong></td><td><span class="elo-badge">${Math.round(s.elo)}</span></td><td>${s.wr}%</td><td class="${s.gf-s.ga>=0?'text-green':'text-red'}">${s.gf-s.ga}</td><td class="${s.streak>0?'text-green':(s.streak<0?'text-red':'')}\">${s.streak>0?`+${s.streak}🔥`:s.streak<0?`${s.streak}❄️`:'—'}</td></tr>`;
     });
     el.innerHTML = h + '</tbody></table>';
   }
@@ -367,9 +399,12 @@ layout: default
   .main-tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
   .main-tabs button { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; background: #eee; font-weight: bold; }
   .main-tabs button.active { background: var(--primary); color: white; }
+  #logout-btn { background: #aaa; }
+  #logout-btn:hover { background: var(--danger); }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
   section { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+  .login-card { max-width: 360px; margin: 0 auto; }
   .input-group { display: flex; gap: 10px; margin-bottom: 10px; }
   input, select { padding: 10px; border: 1px solid var(--border); border-radius: 6px; flex: 1; }
   button { padding: 10px 15px; border-radius: 6px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: bold; }
