@@ -415,26 +415,16 @@ layout: default
     });
   }
 
-  // FIXED Bug 2: addPlayer() hatte kein Error-Handling — fehlgeschlagene INSERTs blieben
-  // stumm und die Liste wurde trotzdem neu geladen (ohne den neuen Spieler).
-  // Außerdem: games_played wird nur mitgeschickt wenn die Spalte existiert;
-  // bei Schema-Fehler wird es weggelassen und ein Fallback-INSERT versucht.
+  // FIXED: addPlayer() — games_played Spalte existiert jetzt in der DB (Migration hinzugefügt).
+  // Der fehlerhafte Fallback-Mechanismus wurde entfernt; Insert ist jetzt direkt und klar.
+  // Vollständiges Error-Logging bleibt erhalten.
   async function addPlayer() {
     const name = document.getElementById('playerName').value.trim();
     if (!name) return;
 
-    // Versuch 1: Mit games_played (bevorzugt, für adaptiven K-Faktor)
-    let { error } = await sb.from('players').insert([{ name, elo: 1000, games_played: 0 }]);
-
-    // Versuch 2: Fallback ohne games_played falls Spalte nicht existiert
-    if (error && (error.code === '42703' || error.message?.includes('games_played'))) {
-      console.warn('FIXED Bug 2: games_played Spalte fehlt in DB, Fallback-INSERT ohne games_played');
-      const res = await sb.from('players').insert([{ name, elo: 1000 }]);
-      error = res.error;
-    }
+    const { error } = await sb.from('players').insert([{ name, elo: 1000, games_played: 0 }]);
 
     if (error) {
-      // FIXED Bug 2: Fehler wird jetzt sichtbar geloggt und dem User angezeigt
       console.error('addPlayer INSERT Fehler:', error);
       alert('Fehler beim Hinzufügen: ' + (error.message || JSON.stringify(error)));
       return;
