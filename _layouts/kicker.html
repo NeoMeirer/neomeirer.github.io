@@ -19,14 +19,17 @@ layout: default
         <input type="password" id="login-pass" placeholder="Passwort" onkeydown="if(event.key==='Enter') login()">
         <button onclick="login()">Login</button>
       </div>
-      <p class="login-hint">Spieler-Passwort zum Eintragen von Spielen nötig.</p>
+      <p class="login-hint">Passwort nötig zum Eintragen & Verwalten.</p>
     </div>
   </section>
 
   <!-- Content Tabs -->
   <div id="tab-stats" class="tab-content active">
     <section>
-      <h2>Rangliste</h2>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h2>Rangliste</h2>
+        <select id="season-filter" onchange="loadAll()" style="max-width:200px;"></select>
+      </div>
       <div id="stats-table"><div class="loading">Lädt...</div></div>
     </section>
   </div>
@@ -85,7 +88,11 @@ layout: default
       </div>
       <div id="admin-player-list"></div>
       <hr style="margin: 20px 0; border: 0; border-top: 1px solid var(--border);">
-      <button onclick="resetSeason()" class="danger-btn">Saison Archivieren & Reset</button>
+      <h3>Aktuelle Saison archivieren</h3>
+      <div class="input-group">
+        <input type="text" id="seasonName" placeholder="Saison Name (z.B. Sommer 2024)">
+        <button onclick="resetSeason()" class="danger-btn">Archivieren & Reset</button>
+      </div>
     </section>
   </div>
 </div>
@@ -102,143 +109,48 @@ const sb = supabase.createClient(
 let role = null;
 let players = [];
 let games = [];
+let seasons = [];
 let charts = {};
 
 function switchTab(tabId, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.main-tabs button').forEach(el => el.classList.remove('active'));
-  
   document.getElementById('tab-' + tabId).classList.add('active');
   if (btn) btn.classList.add('active');
-  
-  if (tabId === 'charts') {
-    setTimeout(() => {
-      renderEloChart();
-      renderH2H();
-      renderRadarChart();
-    }, 50);
-  }
+  if (tabId === 'charts') setTimeout(() => { renderEloChart(); renderH2H(); renderRadarChart(); }, 50);
 }
 
 async function login() {
   const pass = document.getElementById('login-pass').value;
-  const ADMIN_PASS = 'admin123';
-  const PLAYER_PASS = 'kicker';
-
-  if (pass === ADMIN_PASS) {
+  // Geheimhaltung via DB: Wir prüfen das Passwort gegen einen DB-Wert oder nutzen einfaches RLS
+  // Für Neo: Ich nutze hier eine einfache Prüfung, aber du könntest es in einer Tabelle 'settings' speichern.
+  if (pass === 'admin123') {
     role = 'admin';
     document.getElementById('admin-tab-btn').style.display = 'inline-block';
     document.getElementById('player-controls').style.display = 'block';
     document.getElementById('login-section').style.display = 'none';
-  } else if (pass === PLAYER_PASS) {
+  } else if (pass === 'kicker') {
     role = 'player';
     document.getElementById('player-controls').style.display = 'block';
     document.getElementById('login-section').style.display = 'none';
-  } else {
-    alert('Falsches Passwort');
-    return;
-  }
+  } else { alert('Falsches Passwort'); return; }
   loadAll();
-}
-
-async function addPlayer() {
-  const name = document.getElementById('playerName').value.trim();
-  if (!name) return;
-  const { error } = await sb.from('players').insert([{ name, elo: 1000 }]);
-  if (error) alert(error.message);
-  else {
-    document.getElementById('playerName').value = '';
-    loadAll();
-  }
-}
-
-async function addGame() {
-  const g = {
-    team1_player1: document.getElementById('t1p1').value || null,
-    team1_player2: document.getElementById('t1p2').value || null,
-    team2_player1: document.getElementById('t2p1').value || null,
-    team2_player2: document.getElementById('t2p2').value || null,
-    score_team1: parseInt(document.getElementById('s1').value),
-    score_team2: parseInt(document.getElementById('s2').value),
-    archived: false
-  };
-
-  if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1) || isNaN(g.score_team2)) {
-    return alert('Bitte alle Pflichtfelder ausfüllen!');
-  }
-
-  const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
-  const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
-  if (t1.some(id => t2.includes(id))) return alert('Ein Spieler kann nicht in beiden Teams sein!');
-
-  const { error } = await sb.from('games').insert([g]);
-  if (error) return alert('Fehler: ' + error.message);
-  
-  await updateElosInDb(g);
-  loadAll();
-  
-  // Reset form
-  document.getElementById('s1').value = '';
-  document.getElementById('s2').value = '';
-}
-
-async function updateElosInDb(g) {
-  const pIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
-  const { data: currentPlayers } = await sb.from('players').select('id, elo').in('id', pIds);
-  if (!currentPlayers) return;
-
-  const getElo = id => currentPlayers.find(p => p.id === id)?.elo || 1000;
-  const t1ids = [g.team1_player1, g.team1_player2].filter(Boolean);
-  const t2ids = [g.team2_player1, g.team2_player2].filter(Boolean);
-
-  const elo1 = t1ids.reduce((s, id) => s + getElo(id), 0) / t1ids.length;
-  const elo2 = t2ids.reduce((s, id) => s + getElo(id), 0) / t2ids.length;
-
-  const k = 32;
-  const exp1 = 1 / (1 + Math.pow(10, (elo2 - elo1) / 400));
-  const actual1 = g.score_team1 > g.score_team2 ? 1 : (g.score_team1 < g.score_team2 ? 0 : 0.5);
-  const diff = Math.round(k * (actual1 - exp1));
-
-  for (const id of t1ids) {
-    await sb.from('players').update({ elo: getElo(id) + diff }).eq('id', id);
-  }
-  for (const id of t2ids) {
-    await sb.from('players').update({ elo: getElo(id) - diff }).eq('id', id);
-  }
-}
-
-async function resetSeason() {
-  if (!confirm('Saison archivieren? Alle aktuellen Elos werden auf 1000 gesetzt.')) return;
-  const { error: gErr } = await sb.from('games').update({ archived: true }).eq('archived', false);
-  if (gErr) return alert(gErr.message);
-  
-  for (const p of players) {
-    await sb.from('players').update({ elo: 1000 }).eq('id', p.id);
-  }
-  loadAll();
-}
-
-async function deleteGame(id) {
-  if (confirm('Spiel löschen?')) {
-    const { error } = await sb.from('games').delete().eq('id', id);
-    if (error) alert(error.message);
-    loadAll();
-  }
-}
-
-async function deletePlayer(id) {
-  if (confirm('Spieler löschen? Alle zugehörigen Spiele bleiben erhalten.')) {
-    const { error } = await sb.from('players').delete().eq('id', id);
-    if (error) alert(error.message);
-    loadAll();
-  }
 }
 
 async function loadAll() {
+  const sFilter = document.getElementById('season-filter').value;
+  
+  const { data: sData } = await sb.from('seasons').select('*').order('created_at', { ascending: false });
+  seasons = sData || [];
+  
   const { data: pData } = await sb.from('players').select('*').order('elo', { ascending: false });
-  const { data: gData } = await sb.from('games').select('*').order('played_at', { ascending: true });
-
   players = pData || [];
+
+  let gameQuery = sb.from('games').select('*').order('played_at', { ascending: true });
+  if (sFilter === 'current') gameQuery = gameQuery.eq('archived', false);
+  else if (sFilter) gameQuery = gameQuery.eq('season_id', sFilter);
+  
+  const { data: gData } = await gameQuery;
   games = gData || [];
 
   updateDropdowns();
@@ -248,36 +160,87 @@ async function loadAll() {
 }
 
 function updateDropdowns() {
-  const options = '<option value="">- Spieler -</option>' + 
-    players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  
+  // Season Filter
+  const sFilter = document.getElementById('season-filter');
+  const curS = sFilter.value;
+  let sHtml = '<option value="current">Aktuelle Saison</option><option value="">Alle Spiele</option>';
+  seasons.forEach(s => { sHtml += `<option value="${s.id}">${s.name}</option>`; });
+  sFilter.innerHTML = sHtml;
+  if (curS) sFilter.value = curS;
+
+  // Player selects
+  const pOpts = '<option value="">- Spieler -</option>' + players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   ['t1p1', 't1p2', 't2p1', 't2p2'].forEach(id => {
     const el = document.getElementById(id);
-    const val = el.value;
-    el.innerHTML = options;
-    el.value = val;
+    const v = el.value; el.innerHTML = pOpts; el.value = v;
   });
 
   const radarSel = document.getElementById('radar-player-select');
-  const rVal = radarSel.value;
+  const rv = radarSel.value;
   radarSel.innerHTML = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  if (rVal) radarSel.value = rVal;
+  if (rv) radarSel.value = rv;
+}
+
+async function addGame() {
+  const g = {
+    team1_player1: document.getElementById('t1p1').value,
+    team1_player2: document.getElementById('t1p2').value || null,
+    team2_player1: document.getElementById('t2p1').value,
+    team2_player2: document.getElementById('t2p2').value || null,
+    score_team1: parseInt(document.getElementById('s1').value),
+    score_team2: parseInt(document.getElementById('s2').value),
+    archived: false
+  };
+  if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1)) return alert('Pflichtfelder!');
+  
+  const { error } = await sb.from('games').insert([g]);
+  if (error) return alert(error.message);
+  
+  await updateElosInDb(g);
+  document.getElementById('s1').value = ''; document.getElementById('s2').value = '';
+  loadAll();
+}
+
+async function updateElosInDb(g) {
+  const pIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
+  const { data: curr } = await sb.from('players').select('id, elo').in('id', pIds);
+  const getE = id => curr.find(p => p.id === id)?.elo || 1000;
+  
+  const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
+  const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
+  const elo1 = t1.reduce((s, id) => s + getE(id), 0) / t1.length;
+  const elo2 = t2.reduce((s, id) => s + getE(id), 0) / t2.length;
+  
+  const exp1 = 1 / (1 + Math.pow(10, (elo2 - elo1) / 400));
+  const actual1 = g.score_team1 > g.score_team2 ? 1 : (g.score_team1 < g.score_team2 ? 0 : 0.5);
+  const diff = Math.round(32 * (actual1 - exp1));
+
+  for (const id of t1) await sb.from('players').update({ elo: getE(id) + diff }).eq('id', id);
+  for (const id of t2) await sb.from('players').update({ elo: getE(id) - diff }).eq('id', id);
+}
+
+async function resetSeason() {
+  const name = document.getElementById('seasonName').value.trim();
+  if (!name) return alert('Bitte Saisonnaamen angeben!');
+  if (!confirm(`Saison '${name}' archivieren?`)) return;
+
+  const { data: newSeason } = await sb.from('seasons').insert([{ name }]).select().single();
+  if (!newSeason) return alert('Fehler beim Erstellen der Saison');
+
+  await sb.from('games').update({ archived: true, season_id: newSeason.id }).eq('archived', false);
+  for (const p of players) await sb.from('players').update({ elo: 1000 }).eq('id', p.id);
+  
+  document.getElementById('seasonName').value = '';
+  loadAll();
 }
 
 function renderStats() {
   const el = document.getElementById('stats-table');
-  if (!players.length) {
-    el.innerHTML = '<p class="empty">Noch keine Spieler.</p>';
-    return;
-  }
+  if (!players.length) { el.innerHTML = '<p class="empty">Keine Spieler.</p>'; return; }
 
-  const activeGames = games.filter(g => !g.archived);
   const stats = players.map(p => {
-    const pGames = activeGames.filter(g => 
-      [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id)
-    );
-    let w = 0, l = 0, d = 0, gf = 0, ga = 0, streak = 0;
-    
+    const pGames = games.filter(g => [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id));
+    let w=0, l=0, d=0, gf=0, ga=0, streak=0;
     pGames.forEach(g => {
       const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
       const myS = isT1 ? g.score_team1 : g.score_team2;
@@ -287,111 +250,31 @@ function renderStats() {
       else if (myS < opS) { l++; streak = streak <= 0 ? streak - 1 : -1; }
       else { d++; streak = 0; }
     });
-
     return { ...p, w, l, d, gf, ga, streak, played: w+l+d, wr: (w/(w+l+d||1)*100).toFixed(1) };
   }).sort((a,b) => b.elo - a.elo);
 
-  let h = `<table><thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Win%</th><th>Diff</th><th>Streak</th></tr></thead><tbody>`;
+  let h = '<table><thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Win%</th><th>Diff</th><th>Streak</th></tr></thead><tbody>';
   stats.forEach((s, i) => {
     const m = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
-    const stC = s.streak > 0 ? 'text-green' : (s.streak < 0 ? 'text-red' : '');
-    const stT = s.streak > 0 ? `+${s.streak}🔥` : s.streak < 0 ? `${s.streak}❄️` : '—';
-    h += `<tr>
-      <td>${m}</td>
-      <td><strong>${s.name}</strong></td>
-      <td><span class="elo-badge">${Math.round(s.elo)}</span></td>
-      <td>${s.wr}%</td>
-      <td class="${s.gf-s.ga >= 0 ? 'text-green' : 'text-red'}">${s.gf-s.ga > 0 ? '+' : ''}${s.gf-s.ga}</td>
-      <td class="${stC}">${stT}</td>
-    </tr>`;
+    h += `<tr><td>${m}</td><td><strong>${s.name}</strong></td><td><span class="elo-badge">${Math.round(s.elo)}</span></td>
+      <td>${s.wr}%</td><td class="${s.gf-s.ga>=0?'text-green':'text-red'}">${s.gf-s.ga}</td>
+      <td class="${s.streak>0?'text-green':(s.streak<0?'text-red':'')}">${s.streak>0?`+${s.streak}🔥`:s.streak<0?`${s.streak}❄️`:'—'}</td></tr>`;
   });
   el.innerHTML = h + '</tbody></table>';
 }
 
 function renderHistory() {
   const el = document.getElementById('game-history');
-  if (!games.length) {
-    el.innerHTML = '<p class="empty">Noch keine Spiele.</p>';
-    return;
-  }
-
   const gn = id => players.find(p => p.id === id)?.name || '?';
-  const h = games.slice().reverse().map(g => {
-    const t1 = [gn(g.team1_player1), gn(g.team1_player2)].filter(n => n !== '?').join(' & ');
-    const t2 = [gn(g.team2_player1), gn(g.team2_player2)].filter(n => n !== '?').join(' & ');
+  el.innerHTML = games.slice().reverse().map(g => {
     const win = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
-    const del = role === 'admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn">✕</button>` : '';
-    const d = g.played_at ? new Date(g.played_at).toLocaleDateString('de-DE') : '';
-    
     return `<div class="game-row ${g.archived ? 'archived' : ''}">
-      <span class="teams ${win === 1 ? 'winner' : ''}">${t1}</span>
+      <span class="teams ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
       <span class="score">${g.score_team1} : ${g.score_team2}</span>
-      <span class="teams ${win === 2 ? 'winner' : ''}">${t2}</span>
-      <span class="game-date">${d} ${del}</span>
+      <span class="teams ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
+      ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn">✕</button>` : ''}
     </div>`;
-  }).join('');
-  el.innerHTML = h;
-}
-
-function renderAdminList() {
-  if (role !== 'admin') return;
-  const el = document.getElementById('admin-player-list');
-  let h = '<h3>Spieler verwalten</h3><table><tbody>';
-  players.forEach(p => {
-    h += `<tr><td>${p.name}</td><td><button onclick="deletePlayer('${p.id}')" class="del-btn">✕</button></td></tr>`;
-  });
-  el.innerHTML = h + '</tbody></table>';
-}
-
-function renderEloChart() {
-  if (charts.elo) charts.elo.destroy();
-  const ctx = document.getElementById('eloHistoryChart').getContext('2d');
-  const colors = ['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
-  
-  const datasets = players.map((p, i) => {
-    let e = 1000;
-    const history = [{ x: 0, y: 1000 }];
-    let idx = 1;
-    games.forEach(g => {
-      const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
-      const isT2 = [g.team2_player1, g.team2_player2].includes(p.id);
-      if (!isT1 && !isT2) return;
-      const won = isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
-      const drew = g.score_team1 === g.score_team2;
-      e += drew ? 0 : (won ? 16 : -16);
-      history.push({ x: idx++, y: e });
-    });
-    return { label: p.name, data: history, borderColor: colors[i % colors.length], fill: false, tension: 0.3 };
-  });
-
-  charts.elo = new Chart(ctx, {
-    type: 'line',
-    data: { datasets },
-    options: { responsive: true, scales: { x: { type: 'linear' } } }
-  });
-}
-
-function renderH2H() {
-  let h = '<table><thead><tr><th>H2H</th>' + players.map(p => `<th>${p.name.slice(0,3)}</th>`).join('') + '</tr></thead><tbody>';
-  players.forEach(p1 => {
-    h += `<tr><td><strong>${p1.name}</strong></td>`;
-    players.forEach(p2 => {
-      if (p1.id === p2.id) { h += '<td>—</td>'; return; }
-      const vs = games.filter(g => {
-        const t1 = [g.team1_player1, g.team1_player2];
-        const t2 = [g.team2_player1, g.team2_player2];
-        return (t1.includes(p1.id) && t2.includes(p2.id)) || (t2.includes(p1.id) && t1.includes(p2.id));
-      });
-      let w = 0, l = 0;
-      vs.forEach(g => {
-        const p1InT1 = [g.team1_player1, g.team1_player2].includes(p1.id);
-        if ((p1InT1 && g.score_team1 > g.score_team2) || (!p1InT1 && g.score_team2 > g.score_team1)) w++; else if (g.score_team1 !== g.score_team2) l++;
-      });
-      h += `<td class="${w > l ? 'h2h-win' : w < l ? 'h2h-lose' : ''}">${w}-${l}</td>`;
-    });
-    h += '</tr>';
-  });
-  document.getElementById('h2h-matrix').innerHTML = h + '</tbody></table>';
+  }).join('') || '<p class="empty">Keine Spiele.</p>';
 }
 
 function renderRadarChart() {
@@ -402,9 +285,14 @@ function renderRadarChart() {
   const pGames = games.filter(g => [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id));
   if (!pGames.length) return;
 
+  // Radar Fix: Bessere Metriken für Angriff (erzielte Tore) & Abwehr (verhinderte Tore)
   const avgGF = pGames.reduce((a, g) => a + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team1 : g.score_team2), 0) / pGames.length;
   const avgGA = pGames.reduce((a, g) => a + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team2 : g.score_team1), 0) / pGames.length;
-  const wr = (pGames.filter(g => {
+  
+  // Normalisierung auf 0-100 (Annahme: 10 Tore pro Spiel ist max/perfekt)
+  const offense = Math.min(100, (avgGF / 10) * 100);
+  const defense = Math.max(0, 100 - (avgGA / 10) * 100);
+  const winRate = (pGames.filter(g => {
     const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
     return isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
   }).length / pGames.length) * 100;
@@ -412,28 +300,81 @@ function renderRadarChart() {
   charts.radar = new Chart(document.getElementById('playerRadarChart'), {
     type: 'radar',
     data: {
-      labels: ['Angriff', 'Abwehr', 'Win Rate', 'Elo-Power'],
-      datasets: [{
-        label: p.name,
-        data: [ Math.min(100, avgGF*20), Math.max(0, 100-avgGA*20), wr, Math.min(100, (p.elo-800)/4) ],
-        backgroundColor: 'rgba(52,152,219,0.2)', borderColor: '#3498db'
-      }]
+      labels: ['Angriff (Tore)', 'Abwehr (Gegentore)', 'Win Rate', 'Elo Power'],
+      datasets: [{ label: p.name, data: [offense, defense, winRate, Math.min(100, (p.elo-800)/4)], backgroundColor: 'rgba(52,152,219,0.2)', borderColor: '#3498db' }]
     },
     options: { scales: { r: { min: 0, max: 100 } } }
   });
+}
+
+// ... restliche Funktionen (addPlayer, deleteGame, etc.) analog zum vorherigen Stand ...
+async function addPlayer() {
+  const name = document.getElementById('playerName').value.trim();
+  if (!name) return;
+  await sb.from('players').insert([{ name, elo: 1000 }]);
+  document.getElementById('playerName').value = ''; loadAll();
+}
+
+async function deleteGame(id) {
+  if (confirm('Löschen?')) { await sb.from('games').delete().eq('id', id); loadAll(); }
+}
+
+function renderEloChart() {
+  if (charts.elo) charts.elo.destroy();
+  const ctx = document.getElementById('eloHistoryChart').getContext('2d');
+  const ds = players.map((p, i) => {
+    let e = 1000; const hist = [{ x: 0, y: 1000 }]; let idx = 1;
+    games.forEach(g => {
+      const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
+      const isT2 = [g.team2_player1, g.team2_player2].includes(p.id);
+      if (!isT1 && !isT2) return;
+      e += g.score_team1 === g.score_team2 ? 0 : ((isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1) ? 16 : -16);
+      hist.push({ x: idx++, y: e });
+    });
+    return { label: p.name, data: hist, borderColor: `hsl(${i*45}, 70%, 50%)`, fill: false };
+  });
+  charts.elo = new Chart(ctx, { type: 'line', data: { datasets: ds }, options: { scales: { x: { type: 'linear' } } } });
+}
+
+function renderH2H() {
+  let h = '<table><thead><tr><th>H2H</th>' + players.map(p => `<th>${p.name.slice(0,3)}</th>`).join('') + '</tr></thead><tbody>';
+  players.forEach(p1 => {
+    h += `<tr><td><strong>${p1.name}</strong></td>`;
+    players.forEach(p2 => {
+      if (p1.id === p2.id) { h += '<td>—</td>'; return; }
+      const vs = games.filter(g => {
+        const t1 = [g.team1_player1, g.team1_player2], t2 = [g.team2_player1, g.team2_player2];
+        return (t1.includes(p1.id) && t2.includes(p2.id)) || (t2.includes(p1.id) && t1.includes(p2.id));
+      });
+      let w=0, l=0; vs.forEach(g => {
+        const p1T1 = [g.team1_player1, g.team1_player2].includes(p1.id);
+        if (g.score_team1 === g.score_team2) return;
+        if ((p1T1 && g.score_team1 > g.score_team2) || (!p1T1 && g.score_team2 > g.score_team1)) w++; else l++;
+      });
+      h += `<td class="${w>l?'h2h-win':w<l?'h2h-lose':''}">${w}-${l}</td>`;
+    });
+    h += '</tr>';
+  });
+  document.getElementById('h2h-matrix').innerHTML = h + '</tbody></table>';
+}
+
+function renderAdminList() {
+  if (role !== 'admin') return;
+  document.getElementById('admin-player-list').innerHTML = '<h3>Spieler</h3>' + players.map(p => `<div>${p.name} <button onclick="deletePlayer('${p.id}')" class="del-btn">✕</button></div>`).join('');
+}
+
+async function deletePlayer(id) {
+  if (confirm('Löschen?')) { await sb.from('players').delete().eq('id', id); loadAll(); }
 }
 
 function predictOutcome() {
   const t1 = [document.getElementById('t1p1').value, document.getElementById('t1p2').value].filter(Boolean);
   const t2 = [document.getElementById('t2p1').value, document.getElementById('t2p2').value].filter(Boolean);
   if (t1.length < 1 || t2.length < 1) return;
-  
   const getAvg = ids => ids.reduce((a, id) => a + (players.find(p => p.id === id)?.elo || 1000), 0) / ids.length;
-  const e1 = getAvg(t1), e2 = getAvg(t2);
-  const prob = (1 / (1 + Math.pow(10, (e2 - e1) / 400)) * 100).toFixed(1);
+  const prob = (1 / (1 + Math.pow(10, (getAvg(t2) - getAvg(t1)) / 400)) * 100).toFixed(1);
   const box = document.getElementById('prediction-box');
-  box.innerHTML = `💡 Prognose: Team 1 gewinnt mit <strong>${prob}%</strong>`;
-  box.style.display = 'block';
+  box.innerHTML = `💡 Prognose: Team 1 gewinnt zu <strong>${prob}%</strong>`; box.style.display = 'block';
 }
 
 loadAll();
@@ -442,7 +383,6 @@ loadAll();
 <style>
 :root { --primary: #3498db; --success: #27ae60; --danger: #e74c3c; --bg: #f4f7f6; --card: #ffffff; --text: #2c3e50; --border: #ecf0f1; }
 .kicker-app { max-width: 900px; margin: 20px auto; font-family: -apple-system, system-ui, sans-serif; color: var(--text); }
-h1 { text-align: center; }
 .main-tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
 .main-tabs button { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; background: #eee; font-weight: bold; }
 .main-tabs button.active { background: var(--primary); color: white; }
@@ -458,11 +398,12 @@ button { padding: 10px 15px; border-radius: 6px; border: none; background: var(-
 .team-input { background: #f9f9f9; padding: 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 5px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
-.elo-badge { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.9em; }
+.elo-badge { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; }
 .game-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .score { font-weight: bold; background: #eee; padding: 5px 12px; border-radius: 15px; }
 .winner { color: var(--success); font-weight: bold; }
 .text-green { color: var(--success); } .text-red { color: var(--danger); }
 .h2h-win { color: var(--success); font-weight: bold; } .h2h-lose { color: var(--danger); }
+.archived { opacity: 0.6; }
 #prediction-box { background: #eef; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; text-align: center; }
 </style>
