@@ -1,6 +1,7 @@
 ---
 layout: default
 ---
+
 <div class="kicker-app">
   <h1>🏆 Kicker Liga Pro</h1>
   <nav class="main-tabs">
@@ -21,7 +22,6 @@ layout: default
     </div>
   </section>
 
-  <!-- Content Tabs -->
   <div id="tab-stats" class="tab-content active">
     <section>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
@@ -43,48 +43,51 @@ layout: default
     </section>
     <section>
       <h2>Spieler-Analyse (Radar)</h2>
-      <div style="max-width: 400px; margin: 0 auto;">
-        <select id="radar-player-select" onchange="renderRadarChart()"></select>
-        <canvas id="playerRadarChart"></canvas>
-      </div>
+      <select id="radar-player-select" onchange="renderRadarChart()"></select>
+      <canvas id="playerRadarChart"></canvas>
     </section>
   </div>
 
   <div id="tab-history" class="tab-content">
+    <section>
+      <h2>Letzte Spiele</h2>
+      <div id="game-history"></div>
+    </section>
+  </div>
+
+  <div id="tab-admin" class="tab-content">
     <section id="player-controls" style="display:none;">
       <h2>Neues Spiel eintragen</h2>
       <div class="game-form">
         <div class="team-input">
           <h3>Team 1</h3>
-          <select id="t1p1" onchange="predictOutcome()"></select>
-          <select id="t1p2" onchange="predictOutcome()"></select>
+          <select id="t1p1"></select>
+          <select id="t1p2"></select>
         </div>
         <div class="team-input">
           <h3>Team 2</h3>
-          <select id="t2p1" onchange="predictOutcome()"></select>
-          <select id="t2p2" onchange="predictOutcome()"></select>
+          <select id="t2p1"></select>
+          <select id="t2p2"></select>
         </div>
+      </div>
+      <div class="input-group" style="margin-top:15px;">
         <input type="number" id="s1" placeholder="Tore Team 1" min="0">
         <input type="number" id="s2" placeholder="Tore Team 2" min="0">
-        <div id="prediction-box"></div>
-        <button onclick="addGame()" class="submit-btn">Spiel speichern</button>
       </div>
-    </section>
-    <section>
-      <h2>Letzte Spiele</h2>
-      <div id="game-history"><div class="loading">Lädt...</div></div>
-    </section>
-  </div>
-
-  <div id="tab-admin" class="tab-content">
-    <section>
-      <h2>Admin-Steuerung</h2>
+      <button onclick="addGame()" class="submit-btn">Spiel speichern</button>
+      <div id="prediction-box"></div>
+      
+      <hr style="margin:25px 0; border:0; border-top:1px solid #eee;">
+      
+      <h3>Spieler hinzufügen</h3>
       <div class="input-group">
         <input type="text" id="playerName" placeholder="Spielername">
         <button onclick="addPlayer()">Hinzufügen</button>
       </div>
       <div id="admin-player-list"></div>
-      <hr style="margin: 20px 0; border: 0; border-top: 1px solid var(--border);">
+
+      <hr style="margin:25px 0; border:0; border-top:1px solid #eee;">
+      
       <h3>Aktuelle Saison archivieren</h3>
       <div class="input-group">
         <input type="text" id="seasonName" placeholder="Saison Name (z.B. Sommer 2024)">
@@ -97,10 +100,7 @@ layout: default
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const sb = supabase.createClient(
-  'https://qqoxwxomidrdkwhwndcg.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo'
-);
+const sb = supabase.createClient('https://qqoxwxomidrdkwhwndcg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo');
 let role = null, players = [], games = [], seasons = [], charts = {};
 
 function switchTab(tabId, btn) {
@@ -108,7 +108,9 @@ function switchTab(tabId, btn) {
   document.querySelectorAll('.main-tabs button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + tabId).classList.add('active');
   if (btn) btn.classList.add('active');
-  if (tabId === 'charts') setTimeout(() => { renderEloChart(); renderH2H(); renderRadarChart(); }, 50);
+  if (tabId === 'charts') {
+    setTimeout(() => { renderEloChart(); renderH2H(); renderRadarChart(); }, 50);
+  }
 }
 
 async function login() {
@@ -127,17 +129,21 @@ async function login() {
 }
 
 async function loadAll() {
-  const sFilter = document.getElementById('season-filter').value;
+  const sfEl = document.getElementById('season-filter');
+  let sFilter = sfEl ? sfEl.value : 'current';
+  if (!sFilter) sFilter = 'current';
+
   const { data: sData } = await sb.from('seasons').select('*').order('created_at', { ascending: false });
   seasons = sData || [];
-  
   const { data: pData } = await sb.from('players').select('*').order('elo', { ascending: false });
   players = pData || [];
   
   let gameQuery = sb.from('games').select('*').order('played_at', { ascending: true });
-  if (sFilter === 'current') gameQuery = gameQuery.eq('archived', false);
-  else if (sFilter) gameQuery = gameQuery.eq('season_id', sFilter);
-  
+  if (sFilter === 'current') {
+    gameQuery = gameQuery.eq('archived', false);
+  } else if (sFilter !== 'all' && sFilter !== '') {
+    gameQuery = gameQuery.eq('season_id', sFilter);
+  }
   const { data: gData } = await gameQuery;
   games = gData || [];
   
@@ -148,23 +154,25 @@ async function loadAll() {
 }
 
 function updateDropdowns() {
-  const sFilter = document.getElementById('season-filter');
-  const curS = sFilter.value;
-  let sHtml = '<option value="current">Aktuelle Saison</option><option value="">Alle Spiele</option>';
-  seasons.forEach(s => { sHtml += `<option value="${s.id}">${s.name}</option>`; });
-  sFilter.innerHTML = sHtml;
-  if (curS) sFilter.value = curS;
-
+  const sfEl = document.getElementById('season-filter');
+  if (sfEl) {
+    const curVal = sfEl.value || 'current';
+    let sHtml = '<option value="current">Aktuelle Saison</option><option value="all">Alle Spiele</option>';
+    seasons.forEach(s => { sHtml += `<option value="${s.id}">${s.name}</option>`; });
+    sfEl.innerHTML = sHtml;
+    sfEl.value = curVal;
+  }
   const pOpts = '<option value="">- Spieler -</option>' + players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   ['t1p1', 't1p2', 't2p1', 't2p2'].forEach(id => {
     const el = document.getElementById(id);
-    const v = el.value; el.innerHTML = pOpts; el.value = v;
+    if (el) { const v = el.value; el.innerHTML = pOpts; el.value = v; }
   });
-  
   const radarSel = document.getElementById('radar-player-select');
-  const rv = radarSel.value;
-  radarSel.innerHTML = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  if (rv) radarSel.value = rv;
+  if (radarSel) {
+    const rv = radarSel.value;
+    radarSel.innerHTML = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    if (rv) radarSel.value = rv;
+  }
 }
 
 async function addGame() {
@@ -178,12 +186,11 @@ async function addGame() {
     archived: false
   };
   if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1)) return alert('Pflichtfelder!');
-  
   const { error } = await sb.from('games').insert([g]);
   if (error) return alert(error.message);
-  
   await updateElosInDb(g);
-  document.getElementById('s1').value = ''; document.getElementById('s2').value = '';
+  document.getElementById('s1').value = '';
+  document.getElementById('s2').value = '';
   loadAll();
 }
 
@@ -191,33 +198,31 @@ async function updateElosInDb(g) {
   const pIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
   const { data: curr } = await sb.from('players').select('id, elo').in('id', pIds);
   const getE = id => curr.find(p => p.id === id)?.elo || 1000;
-  
   const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
   const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
   const elo1 = t1.reduce((s, id) => s + getE(id), 0) / t1.length;
   const elo2 = t2.reduce((s, id) => s + getE(id), 0) / t2.length;
-  
   const exp1 = 1 / (1 + Math.pow(10, (elo2 - elo1) / 400));
   const actual1 = g.score_team1 > g.score_team2 ? 1 : (g.score_team1 < g.score_team2 ? 0 : 0.5);
   const diff = Math.round(32 * (actual1 - exp1));
-  
   for (const id of t1) await sb.from('players').update({ elo: getE(id) + diff }).eq('id', id);
   for (const id of t2) await sb.from('players').update({ elo: getE(id) - diff }).eq('id', id);
 }
 
 async function resetSeason() {
-  const name = document.getElementById('seasonName').value.trim();
+  const nameEl = document.getElementById('seasonName');
+  const name = nameEl.value.trim();
   if (!name) return alert('Bitte Saisonnaamen angeben!');
-  if (!confirm(`Saison '${name}' archivieren?`)) return;
-  
-  const { data: newSeason } = await sb.from('seasons').insert([{ name }]).select().single();
-  if (!newSeason) return alert('Fehler beim Erstellen der Saison');
-  
+  if (!confirm(`Saison '${name}' archivieren? Alles (Stats, Spiele, Visuals) wird für die aktuelle Saison zurückgesetzt.`)) return;
+  const { data: newSeason, error: sErr } = await sb.from('seasons').insert([{ name }]).select().single();
+  if (sErr || !newSeason) return alert('Fehler: ' + (sErr?.message || 'Unbekannt'));
   await sb.from('games').update({ archived: true, season_id: newSeason.id }).eq('archived', false);
   await sb.from('players').update({ elo: 1000 }).neq('id', '00000000-0000-0000-0000-000000000000');
-  
-  document.getElementById('seasonName').value = '';
-  loadAll();
+  nameEl.value = '';
+  const sfEl = document.getElementById('season-filter');
+  if (sfEl) sfEl.value = 'current';
+  await loadAll();
+  alert('Alles erfolgreich zurückgesetzt!');
 }
 
 function renderStats() {
@@ -237,13 +242,10 @@ function renderStats() {
     });
     return { ...p, w, l, d, gf, ga, streak, played: w+l+d, wr: (w/(w+l+d||1)*100).toFixed(1) };
   }).sort((a,b) => b.elo - a.elo);
-  
   let h = '<table><thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Win%</th><th>Diff</th><th>Streak</th></tr></thead><tbody>';
   stats.forEach((s, i) => {
     const m = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
-    h += `<tr><td>${m}</td><td><strong>${s.name}</strong></td><td><span class="elo-badge">${Math.round(s.elo)}</span></td>
-    <td>${s.wr}%</td><td class="${s.gf-s.ga>=0?'text-green':'text-red'}">${s.gf-s.ga}</td>
-    <td class="${s.streak>0?'text-green':(s.streak<0?'text-red':'')}">${s.streak>0?`+${s.streak}🔥`:s.streak<0?`${s.streak}❄️`:'—'}</td></tr>`;
+    h += `<tr><td>${m}</td><td><strong>${s.name}</strong></td><td><span class="elo-badge">${Math.round(s.elo)}</span></td><td>${s.wr}%</td><td class="${s.gf-s.ga>=0?'text-green':'text-red'}">${s.gf-s.ga}</td><td class="${s.streak>0?'text-green':(s.streak<0?'text-red':'')}">${s.streak>0?`+${s.streak}🔥`:s.streak<0?`${s.streak}❄️`:'—'}</td></tr>`;
   });
   el.innerHTML = h + '</tbody></table>';
 }
@@ -254,17 +256,19 @@ function renderHistory() {
   el.innerHTML = games.slice().reverse().map(g => {
     const win = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
     return `<div class="game-row ${g.archived ? 'archived' : ''}">
-    <span class="teams ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
-    <span class="score">${g.score_team1} : ${g.score_team2}</span>
-    <span class="teams ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
-    ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn">✕</button>` : ''}
+      <span class="teams ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
+      <span class="score">${g.score_team1} : ${g.score_team2}</span>
+      <span class="teams ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
+      ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn">✕</button>` : ''}
     </div>`;
   }).join('') || '<p class="empty">Keine Spiele.</p>';
 }
 
 function renderRadarChart() {
   if (charts.radar) charts.radar.destroy();
-  const pId = document.getElementById('radar-player-select').value;
+  const radarEl = document.getElementById('radar-player-select');
+  if (!radarEl) return;
+  const pId = radarEl.value;
   const p = players.find(x => x.id === pId);
   if (!p) return;
   const pGames = games.filter(g => [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id));
@@ -275,22 +279,11 @@ function renderRadarChart() {
     const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
     return isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
   }).length / pGames.length) * 100;
-  
   charts.radar = new Chart(document.getElementById('playerRadarChart'), {
     type: 'radar',
     data: {
       labels: ['Angriff (Tore)', 'Abwehr (Gegentore)', 'Win Rate', 'Elo Power', 'Erfahrung'],
-      datasets: [{ 
-        label: p.name, 
-        data: [
-          Math.min(100, (avgGF / 10) * 100), 
-          Math.max(0, 100 - (avgGA / 10) * 100), 
-          winRate, 
-          Math.min(100, (p.elo-800)/4),
-          Math.min(100, pGames.length * 5)
-        ], 
-        backgroundColor: 'rgba(52,152,219,0.2)', borderColor: '#3498db' 
-      }]
+      datasets: [{ label: p.name, data: [Math.min(100, (avgGF / 10) * 100), Math.max(0, 100 - (avgGA / 10) * 100), winRate, Math.min(100, (p.elo-800)/4), Math.min(100, pGames.length * 5)], backgroundColor: 'rgba(52,152,219,0.2)', borderColor: '#3498db' }]
     },
     options: { scales: { r: { min: 0, max: 100 } } }
   });
@@ -300,7 +293,8 @@ async function addPlayer() {
   const name = document.getElementById('playerName').value.trim();
   if (!name) return;
   await sb.from('players').insert([{ name, elo: 1000 }]);
-  document.getElementById('playerName').value = ''; loadAll();
+  document.getElementById('playerName').value = '';
+  loadAll();
 }
 
 async function deleteGame(id) {
@@ -325,7 +319,9 @@ function renderEloChart() {
   if (charts.elo) charts.elo.destroy();
   const ctx = document.getElementById('eloHistoryChart').getContext('2d');
   const ds = players.map((p, i) => {
-    let e = 1000; const hist = [{ x: 0, y: 1000 }]; let idx = 1;
+    let e = 1000;
+    const hist = [{ x: 0, y: 1000 }];
+    let idx = 1;
     games.forEach(g => {
       const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
       const isT2 = [g.team2_player1, g.team2_player2].includes(p.id);
@@ -348,7 +344,8 @@ function renderH2H() {
         const t1 = [g.team1_player1, g.team1_player2], t2 = [g.team2_player1, g.team2_player2];
         return (t1.includes(p1.id) && t2.includes(p2.id)) || (t2.includes(p1.id) && t1.includes(p2.id));
       });
-      let w=0, l=0; vs.forEach(g => {
+      let w=0, l=0;
+      vs.forEach(g => {
         const p1T1 = [g.team1_player1, g.team1_player2].includes(p1.id);
         if (g.score_team1 === g.score_team2) return;
         if ((p1T1 && g.score_team1 > g.score_team2) || (!p1T1 && g.score_team2 > g.score_team1)) w++; else l++;
@@ -357,17 +354,8 @@ function renderH2H() {
     });
     h += '</tr>';
   });
-  document.getElementById('h2h-matrix').innerHTML = h + '</tbody></table>';
-}
-
-function predictOutcome() {
-  const t1 = [document.getElementById('t1p1').value, document.getElementById('t1p2').value].filter(Boolean);
-  const t2 = [document.getElementById('t2p1').value, document.getElementById('t2p2').value].filter(Boolean);
-  if (t1.length < 1 || t2.length < 1) return;
-  const getAvg = ids => ids.reduce((a, id) => a + (players.find(p => p.id === id)?.elo || 1000), 0) / ids.length;
-  const prob = (1 / (1 + Math.pow(10, (getAvg(t2) - getAvg(t1)) / 400)) * 100).toFixed(1);
-  const box = document.getElementById('prediction-box');
-  box.innerHTML = `💡 Prognose: Team 1 gewinnt zu <strong>${prob}%</strong>`; box.style.display = 'block';
+  const h2hEl = document.getElementById('h2h-matrix');
+  if (h2hEl) h2hEl.innerHTML = h + '</tbody></table>';
 }
 
 loadAll();
@@ -395,8 +383,10 @@ th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border)
 .game-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .score { font-weight: bold; background: #eee; padding: 5px 12px; border-radius: 15px; }
 .winner { color: var(--success); font-weight: bold; }
-.text-green { color: var(--success); } .text-red { color: var(--danger); }
-.h2h-win { color: var(--success); font-weight: bold; } .h2h-lose { color: var(--danger); }
+.text-green { color: var(--success); }
+.text-red { color: var(--danger); }
+.h2h-win { color: var(--success); font-weight: bold; }
+.h2h-lose { color: var(--danger); }
 .archived { opacity: 0.6; }
 .admin-player-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .del-btn { background: var(--primary); padding: 5px 10px; font-size: 0.8em; }
