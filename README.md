@@ -69,3 +69,22 @@ My TODOs:
 
 - [ ] learn about markdown syntax (to write posts properly)
 - [ ] add posts and blogs
+
+KickerTicker Verbesserungen:
+
+
+- [ ] akutell kann nur admin Spiele eintragen, aber es sollte eigentlich auch Spieler Spiele eintragen können
+- [ ] Archivierung richtig machen, also alles zurücksetzten und vergangenen Saisons anzeigen
+
+
+- [ ] Erfahrung bei Spieler-Analyse (Radar) entfernen und Angriff und Verteidigung anders berechnen 
+- [ ] Hinzufügen des Chemie-Bonus: Welche Spielerpaare performen besser als erwartet? (Tatsächliche Gewinnrate vs. erwartete basierend auf Einzel-Elos)
+- [ ] Logik nochmal überprüfen 
+- [ ] aktuelle Saison als Default 
+- [ ] Passwort für Admin und Spieler nicht im Code anzeigen (vllt über Supabase)
+- [ ] Kicker Liga Pro Überschrift in die Mitte
+- [ ] Ergebnisse der letzten Spiele alle mittig übereinander 
+
+
+- [ ] man soll die Gewinn-Prognose sehen, bevor man ein Spiel einträgt
+- [ ] Vernändern sich Stats richtig, wenn man Spiele löscht 

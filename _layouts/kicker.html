@@ -2,7 +2,10 @@
 layout: default
 ---
 <div class="kicker-app">
-  <h1>🏆 Kicker Liga Pro</h1>
+  <header class="app-header">
+    <h1>🏆 Kicker Liga Pro</h1>
+    <p class="app-subtitle">Aktuelle Saison live verwalten, archivierte Saisons im Filter abrufen und alle Ansichten konsistent neu laden.</p>
+  </header>
   <nav class="main-tabs">
     <button onclick="switchTab('stats', this)" class="active">Stats</button>
     <button onclick="switchTab('charts', this)">Visualisierung</button>
@@ -91,7 +94,7 @@ layout: default
       </div>
       <hr style="margin:25px 0; border:0; border-top:1px solid #eee;">
       <h3>Saison archivieren</h3>
-      <p style="font-size:0.9em; color:#666; margin-bottom:10px;">Setzt Elo & Statistiken für die neue Saison zurück.</p>
+      <p style="font-size:0.9em; color:#666; margin-bottom:10px;">Archiviert die aktuelle Saison, setzt die Live-Werte zurück und lässt vergangene Saisons im Filter abrufbar.</p>
       <div class="input-group">
         <input type="text" id="seasonName" placeholder="Saison Name (z.B. Frühling 2026)">
         <button class="danger-btn" onclick="resetSeason()">Archivieren & Reset</button>
@@ -106,12 +109,18 @@ layout: default
   const sb = supabase.createClient('https://qqoxwxomidrdkwhwndcg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo');
   let role = null, players = [], games = [], seasons = [], charts = {};
 
+  function renderCharts() {
+    renderEloChart();
+    renderH2H();
+    renderRadarChart();
+  }
+
   function switchTab(tabId, btn) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.main-tabs button').forEach(el => el.classList.remove('active'));
     document.getElementById('tab-' + tabId).classList.add('active');
     if (btn) btn.classList.add('active');
-    if (tabId === 'charts') setTimeout(() => { renderEloChart(); renderH2H(); renderRadarChart(); }, 50);
+    if (tabId === 'charts') setTimeout(renderCharts, 50);
   }
 
   async function login() {
@@ -150,6 +159,7 @@ layout: default
     renderStats();
     renderHistory();
     renderAdminList();
+    renderCharts();
   }
 
   function updateDropdowns() {
@@ -226,7 +236,7 @@ layout: default
     await sb.from('games').update({ archived: true, season_id: newS.id }).eq('archived', false);
     await sb.from('players').update({ elo: 1000 });
     document.getElementById('seasonName').value = '';
-    loadAll();
+    await loadAll();
     alert('Saison archiviert & Reset durchgeführt!');
   }
 
@@ -388,6 +398,9 @@ layout: default
   :root { --primary: #3498db; --success: #27ae60; --danger: #e74c3c; --bg: #f4f7f6; --card: #ffffff; --text: #2c3e50; --border: #ecf0f1; }
   body { background: var(--bg); margin:0; }
   .kicker-app { max-width: 900px; margin: 20px auto; font-family: -apple-system, system-ui, sans-serif; color: var(--text); padding: 0 15px; }
+  .app-header { text-align: center; margin-bottom: 16px; }
+  .app-header h1 { margin-bottom: 6px; }
+  .app-subtitle { margin: 0 auto; max-width: 680px; color: #5f6f7a; font-size: 0.95rem; line-height: 1.45; }
   .main-tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
   .main-tabs button { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; background: #eee; font-weight: bold; }
   .main-tabs button.active { background: var(--primary); color: white; }
