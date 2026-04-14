@@ -166,9 +166,18 @@ layout: default
     loadAll();
   }
 
+  // FIXED E5: Nach Logout wurden players/games Arrays nicht geleert.
+  // → Stats-Tab zeigte nach Logout noch alte Daten.
+  // Jetzt: Arrays leeren + Stats/History neu rendern (zeigen "Keine Daten").
   async function logout() {
     await sb.auth.signOut();
     role = null;
+    players = [];
+    games = [];
+    renderStats();
+    renderHistory();
+    if (charts.elo) { charts.elo.destroy(); charts.elo = null; }
+    if (charts.radar) { charts.radar.destroy(); charts.radar = null; }
     document.getElementById('admin-tab-btn').style.display = 'none';
     document.getElementById('play-tab-btn').style.display = 'none';
     document.getElementById('logout-btn').style.display = 'none';
@@ -247,10 +256,18 @@ layout: default
     // CHANGED: Unentschieden (gleicher Score) explizit abfangen
     if (g.score_team1 === g.score_team2) return alert('Kicker-Spiele enden nicht unentschieden — bitte korrektes Ergebnis eintragen.');
     const { error } = await sb.from('games').insert([g]);
-    if (error) return alert(error.message);
-    await updateElosInDb(g);
+    if (error) return alert('Fehler beim Speichern: ' + error.message);
+    // FIXED F3: try/catch um updateElosInDb — bei ELO-Fehler wird der User informiert
+    // und ein recalculateAllElos() Fallback ausgeführt statt stiller Fehler.
+    try {
+      await updateElosInDb(g);
+    } catch (eloErr) {
+      console.error('ELO-Update fehlgeschlagen, starte Neuberechnung:', eloErr);
+      await recalculateAllElos();
+    }
     document.getElementById('s1').value = '';
     document.getElementById('s2').value = '';
+    document.getElementById('prediction-box').style.display = 'none';
     alert('Spiel gespeichert!');
     loadAll();
   }
@@ -265,7 +282,10 @@ layout: default
 
   async function updateElosInDb(g) {
     const pIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
-    const { data: curr } = await sb.from('players').select('id, elo, games_played').in('id', pIds);
+    // FIXED F4: error-Check beim Spieler-SELECT — bei Fehler frühzeitig abbrechen
+    // statt mit curr=null weiterzurechnen (führt zu falschen ELO-Updates mit Basis 1000).
+    const { data: curr, error: selErr } = await sb.from('players').select('id, elo, games_played').in('id', pIds);
+    if (selErr || !curr) throw new Error('Spieler-Daten konnten nicht geladen werden: ' + (selErr?.message || 'keine Daten'));
     const getPlayer = id => curr.find(p => p.id === id) || { elo: 1000, games_played: 0 };
     const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
     const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
@@ -351,9 +371,13 @@ layout: default
     el.innerHTML = games.slice().reverse().map(g => {
       const win = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
       // CHANGED: Datum wird jetzt angezeigt wenn played_at vorhanden
-      const dateStr = g.played_at ? new Date(g.played_at).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+      // FIXED E3: Ungültige Datumswerte führen zu "Invalid Date" im UI.
+      // Jetzt: Validierung vor Anzeige — wenn played_at kein gültiges Datum ist, kein String.
+      const parsedDate = g.played_at ? new Date(g.played_at) : null;
+      const dateStr = parsedDate && !isNaN(parsedDate) ? parsedDate.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
       // FIXED Fix 2: 3-spaltiges Grid-Layout — Team1 links, Score Mitte, Team2 rechts
-      return `<div class="game-row ${g.archived ? 'archived' : ''}">
+      // FIXED V4: has-delete Klasse nur für Admins — padding-right 42px nur wenn nötig
+      return `<div class="game-row ${g.archived ? 'archived' : ''} ${role === 'admin' ? 'has-delete' : ''}">
         <div class="game-main">
           <span class="teams team1 ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
           <span class="score">${g.score_team1} : ${g.score_team2}</span>
@@ -457,8 +481,12 @@ layout: default
   //   3. Nach jedem Spiel ELO wie in updateElosInDb() aktualisieren
   //   4. Am Ende alle neuen ELOs in Supabase schreiben (bulk)
   async function recalculateAllElos() {
-    // Aktuelle Spielerliste und alle verbleibenden Spiele holen
-    const { data: allPlayers } = await sb.from('players').select('id, name');
+    // FIXED F5: Katastrophaler Null-Fall abgefangen.
+    // Vorher: wenn allPlayers=null → leere Map → alle ELOs in DB auf 1000 gesetzt.
+    // Jetzt: bei Fehler oder leerer Spielerliste sofortige Rückkehr mit alert().
+    const { data: allPlayers, error: playersErr } = await sb.from('players').select('id, name');
+    if (playersErr) { alert('Fehler bei ELO-Neuberechnung: Spielerdaten konnten nicht geladen werden.'); return; }
+    if (!allPlayers || allPlayers.length === 0) return; // keine Spieler = nichts zu tun
     const remainingGames = await fetchAllGames();
 
     // In-memory ELO-Map: alle Spieler starten bei 1000
@@ -504,8 +532,23 @@ layout: default
     await Promise.all(updates);
   }
 
+  // FIXED F1: deletePlayer() hatte kein Error-Handling und keine ELO-Neuberechnung.
+  // Außerdem: Alle Spiele des Spielers werden mitgelöscht, damit keine verwaisten
+  // Datensätze entstehen die die ELOs anderer Spieler korrumpieren.
   async function deletePlayer(id) {
-    if (confirm('Spieler löschen?')) { await sb.from('players').delete().eq('id', id); loadAll(); }
+    const playerName = players.find(p => p.id === id)?.name || 'Spieler';
+    if (!confirm(`"${playerName}" löschen? Alle Spiele dieses Spielers werden ebenfalls gelöscht und die ELOs neu berechnet.`)) return;
+    // Zuerst alle Spiele des Spielers löschen (verhindert verwaiste Datensätze)
+    const { error: gErr } = await sb.from('games').delete().or(
+      `team1_player1.eq.${id},team1_player2.eq.${id},team2_player1.eq.${id},team2_player2.eq.${id}`
+    );
+    if (gErr) { alert('Fehler beim Löschen der Spiele: ' + gErr.message); return; }
+    // Dann den Spieler selbst löschen
+    const { error: pErr } = await sb.from('players').delete().eq('id', id);
+    if (pErr) { alert('Fehler beim Löschen des Spielers: ' + pErr.message); return; }
+    // ELOs für alle verbleibenden Spieler neu berechnen
+    await recalculateAllElos();
+    loadAll();
   }
 
   function renderAdminList() {
@@ -609,7 +652,12 @@ layout: default
     // FIXED: Edge Case — keine Spieler
     if (!players.length) { document.getElementById('h2h-matrix').innerHTML = '<p class="empty">Keine Spieler.</p>'; return; }
     // CHANGED: Vollständige Namen statt abgekürzter (erstes Wort), verbesserte Lesbarkeit
-    let h = '<table><thead><tr><th>H2H ↓ vs →</th>' + players.map(p => `<th title="${p.name}">${p.name.split(' ')[0]}</th>`).join('') + '</tr></thead><tbody>';
+    // FIXED E4: Wenn p.name leer oder null ist, gibt split(' ')[0] einen leeren String zurück.
+    // Fallback: '?' als Spaltenüberschrift wenn Name fehlt.
+    let h = '<table><thead><tr><th>H2H ↓ vs →</th>' + players.map(p => {
+      const shortName = (p.name || '').split(' ')[0] || '?';
+      return `<th title="${p.name || '?'}">${shortName}</th>`;
+    }).join('') + '</tr></thead><tbody>';
     players.forEach(p1 => {
       h += `<tr><td><strong>${p1.name}</strong></td>`;
       players.forEach(p2 => {
@@ -677,8 +725,10 @@ layout: default
   let chemistryRendered = false;
 
   function renderChemistry() {
-    // Lazy render: nur beim ersten Tab-Wechsel berechnen
-    if (!games.length && !players.length) {
+    // FIXED F6: && war falsch — wenn nur eines der Arrays leer ist, trotzdem Frühausstieg.
+    // Vorher: && → weiterrechnen wenn games leer aber players vorhanden (oder umgekehrt).
+    // Jetzt: || → Frühausstieg sobald irgendwelche Daten fehlen.
+    if (!games.length || !players.length) {
       document.getElementById('chemistry-table').innerHTML = '<p class="empty">Noch keine Daten geladen.</p>';
       return;
     }
@@ -781,7 +831,9 @@ layout: default
     chemistryRendered = true;
   }
 
-  loadAll();
+  // FIXED F2: loadAll() wird nicht mehr beim Seitenstart aufgerufen.
+  // Vorher: loadAll() auf Zeile 784 → Supabase-Abfragen vor dem Login → stille Fehler.
+  // Jetzt: loadAll() wird ausschließlich in login() und nach Mutationen aufgerufen.
 </script>
 
 <style>
@@ -808,13 +860,18 @@ layout: default
   .game-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
   .team-input { background: #f9f9f9; padding: 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 5px; }
   table { width: 100%; border-collapse: collapse; }
+  /* FIXED V3: height:40px galt auch für th → Tabellenköpfe zu hoch. th bekommt height:auto. */
   th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); height: 40px; vertical-align: middle; }
+  th { height: auto; font-weight: 600; color: #555; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
   /* FIXED Fix 1: H2H-Matrix alle Zellen zentriert — spezifischer Selektor überschreibt th,td */
   #h2h-matrix table th, #h2h-matrix table td { text-align: center; vertical-align: middle; padding: 10px; height: 40px; }
-  th { font-weight: 600; color: #555; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  /* FIXED V2: Chemistry-Tabelle Spaltenköpfe zentrieren (wie H2H) */
+  .chemistry-table th { text-align: center; }
   .elo-badge { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
-  /* CHANGED: Game-Row Layout verbessert mit Datum */
-  .game-row { position: relative; display: flex; justify-content: center; padding: 12px 42px 12px 8px; border-bottom: 1px solid var(--border); }
+  /* FIXED V1+V4: min-height sichert absolute Del-Button Position; padding-right auf 12px
+     reduziert (42px war nur für Admin-Delete-Button nötig, verschwendet Platz für alle anderen) */
+  .game-row { position: relative; display: flex; justify-content: center; padding: 12px; min-height: 44px; border-bottom: 1px solid var(--border); }
+  .game-row.has-delete { padding-right: 42px; }
   /* FIXED Fix 2: Spiele-Layout horizontal — Team A | Score | Team B */
   .game-main { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; width: 100%; }
   /* FIXED Fix 2: Datum-Zeile spannt alle 3 Spalten */
