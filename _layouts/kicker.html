@@ -524,6 +524,18 @@ layout: default
       </div>`).join('');
   }
 
+  // FIXED Bug 2 (Farben): Golden-Ratio-Farbgenerator für beliebig viele Spieler.
+  // Goldener Winkel = 137.508° → bei jedem Index maximaler Hue-Abstand zum vorherigen.
+  // Saturation und Lightness alternieren für zusätzliche Unterscheidbarkeit.
+  // alpha: optionaler Transparenzwert für backgroundColor (0.0–1.0)
+  function getPlayerColor(index, alpha = 1) {
+    const hue = (index * 137.508) % 360;
+    const sat = index % 2 === 0 ? 65 : 80;
+    const light = index % 2 === 0 ? 45 : 55;
+    if (alpha < 1) return `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
+    return `hsl(${hue}, ${sat}%, ${light}%)`;
+  }
+
   // FIXED: ELO-History Chart benutzt jetzt die echte ELO-Formel statt dem fixem diff=16.
   // Vorher: e += diff_fixed (immer ±16, unabhängig von der ELO-Differenz)
   // Jetzt: echte ELO-Formel mit K=32/16 je nach Spielanzahl, exakt wie updateElosInDb()
@@ -562,11 +574,11 @@ layout: default
       return {
         label: p.name,
         data: hist,
-        // FIXED Bug 3: hsl(i*45) erzeugte sehr ähnliche Grüntöne bei benachbarten Spielern.
-        // Neue Palette: 8 klar unterscheidbare Farben, farbenblindoptimiert (kein Rot+Grün allein).
-        // Reihenfolge: Blau, Orange, Lila, Cyan, Pink, Dunkelgrün, Braun, Türkis
-        borderColor: ['#2563EB','#D97706','#7C3AED','#0891B2','#DB2777','#16A34A','#92400E','#0D9488'][i % 8],
-        backgroundColor: ['#2563EB','#D97706','#7C3AED','#0891B2','#DB2777','#16A34A','#92400E','#0D9488'].map(c => c + '22')[i % 8],
+        // FIXED Bug 2 (Farben): Feste 8-Farben-Palette ersetzt durch Golden-Ratio-Algorithmus.
+        // Funktioniert für beliebig viele Spieler (10–25+) ohne Wiederholungen oder ähnliche Töne.
+        // Goldener Winkel 137.508° sorgt für maximale Hue-Abstände bei beliebigem n.
+        borderColor: getPlayerColor(i),
+        backgroundColor: getPlayerColor(i, 0.15),
         fill: false,
         tension: 0.3,
         pointRadius: 3
