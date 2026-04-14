@@ -1,28 +1,25 @@
 ---
-layout: default 
+layout: default 
 ---
-
-<!-- 
-SQL SETUP FÜR SUPABASE:
-Falls Fehler auftreten, führe dies im SQL Editor aus:
-ALTER TABLE games ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
-ALTER TABLE players ADD COLUMN IF NOT EXISTS elo NUMERIC DEFAULT 1000;
--->
 
 <div class="kicker-app">
   <h1>🏆 Kicker Liga Pro</h1>
   
   <nav class="main-tabs">
     <button onclick="switchTab('stats', this)" class="active">Stats</button>
-    <button onclick="switchTab('charts'), this">Visualisierung</button>
+    <button onclick="switchTab('charts', this)">Visualisierung</button>
     <button onclick="switchTab('history', this)">Spiele</button>
     <button onclick="switchTab('admin', this)" id="admin-tab-btn" style="display:none;">Admin</button>
   </nav>
 
   <section id="login-section">
-    <div class="input-group">
-      <input type="password" id="login-pass" placeholder="Passwort (admin123 / kicker)">
-      <button onclick="login()">Login</button>
+    <div class="login-card">
+      <h3>🔐 Anmelden</h3>
+      <div class="input-group">
+        <input type="password" id="login-pass" placeholder="Passwort" onkeydown="if(event.key==='Enter') login()">
+        <button onclick="login()">Login</button>
+      </div>
+      <p class="login-hint">Spieler-Passwort zum Eintragen von Spielen nötig.</p>
     </div>
   </section>
 
@@ -30,7 +27,7 @@ ALTER TABLE players ADD COLUMN IF NOT EXISTS elo NUMERIC DEFAULT 1000;
   <div id="tab-stats" class="tab-content active">
     <section>
       <h2>Rangliste</h2>
-      <div id="stats-table">Lädt...</div>
+      <div id="stats-table"><div class="loading">Lädt...</div></div>
     </section>
   </div>
 
@@ -58,13 +55,13 @@ ALTER TABLE players ADD COLUMN IF NOT EXISTS elo NUMERIC DEFAULT 1000;
           <h3>Team 1</h3>
           <select id="t1p1" onchange="predictOutcome()"></select>
           <select id="t1p2" onchange="predictOutcome()"></select>
-          <input type="number" id="s1" placeholder="Tore Team 1">
+          <input type="number" id="s1" placeholder="Tore Team 1" min="0">
         </div>
         <div class="team-input">
           <h3>Team 2</h3>
           <select id="t2p1" onchange="predictOutcome()"></select>
           <select id="t2p2" onchange="predictOutcome()"></select>
-          <input type="number" id="s2" placeholder="Tore Team 2">
+          <input type="number" id="s2" placeholder="Tore Team 2" min="0">
         </div>
         <div id="prediction-box"></div>
         <button onclick="addGame()" class="submit-btn">Spiel speichern</button>
@@ -72,7 +69,7 @@ ALTER TABLE players ADD COLUMN IF NOT EXISTS elo NUMERIC DEFAULT 1000;
     </section>
     <section>
       <h2>Letzte Spiele</h2>
-      <div id="game-history">Lädt...</div>
+      <div id="game-history"><div class="loading">Lädt...</div></div>
     </section>
   </div>
 
@@ -84,7 +81,7 @@ ALTER TABLE players ADD COLUMN IF NOT EXISTS elo NUMERIC DEFAULT 1000;
         <button onclick="addPlayer()">Hinzufügen</button>
       </div>
       <div style="margin-top:20px;">
-        <button onclick="resetSeason()" style="background:#e67e22; width: 100%;">Saison Archivieren & Reset</button>
+        <button onclick="resetSeason()" class="danger-btn">Saison Archivieren & Reset</button>
       </div>
       <div id="admin-player-list" style="margin-top:20px;"></div>
     </section>
@@ -105,21 +102,25 @@ let players = [];
 let games = [];
 let charts = {};
 
+// BUG FIX 1: 'tlassList' → 'classList', und korrekte Parameter
 function switchTab(tabId, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.main-tabs button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + tabId).classList.add('active');
-  btn.tlassList.add('active');
+  if (btn) btn.classList.add('active');
 }
 
 async function login() {
   const pass = document.getElementById('login-pass').value;
-  if (pass === 'admin123') {
+  // Passwörter hier durch deine echten Passwörter ersetzen
+  const ADMIN_PASS = 'admin123';
+  const PLAYER_PASS = 'kicker';
+  if (pass === ADMIN_PASS) {
     role = 'admin';
     document.getElementById('admin-tab-btn').style.display = 'inline-block';
     document.getElementById('player-controls').style.display = 'block';
     document.getElementById('login-section').style.display = 'none';
-  } else if (pass === 'kicker') {
+  } else if (pass === PLAYER_PASS) {
     role = 'player';
     document.getElementById('player-controls').style.display = 'block';
     document.getElementById('login-section').style.display = 'none';
@@ -140,46 +141,49 @@ async function addPlayer() {
 
 async function addGame() {
   const g = {
-    team1_player1: document.getElementById('t1p1').value,
+    team1_player1: document.getElementById('t1p1').value || null,
     team1_player2: document.getElementById('t1p2').value || null,
-    team2_player1: document.getElementById('t2p1').value,
+    team2_player1: document.getElementById('t2p1').value || null,
     team2_player2: document.getElementById('t2p2').value || null,
     score_team1: parseInt(document.getElementById('s1').value),
     score_team2: parseInt(document.getElementById('s2').value),
     archived: false
   };
-  if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1)) return alert('Felder prüfen!');
-  
+  if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1) || isNaN(g.score_team2)) {
+    return alert('Bitte alle Pflichtfelder ausfüllen!');
+  }
+  // Gleiche Spieler in beiden Teams verhindern
+  const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
+  const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
+  if (t1.some(id => t2.includes(id))) return alert('Ein Spieler kann nicht in beiden Teams sein!');
+
   const { error } = await sb.from('games').insert([g]);
-  if (error) return alert('Fehler: ' + error.message + '
-Hinweis: Hast du die Spalte "archived" in Supabase angelegt?');
-  
-  // Elo lokal berechnen und updaten
+  if (error) return alert('Fehler: ' + error.message);
   await updateElosInDb(g);
   loadAll();
 }
 
 async function updateElosInDb(g) {
-  // Wir holen die aktuellen Elos der Spieler
   const pIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
   const { data: currentPlayers } = await sb.from('players').select('id, elo').in('id', pIds);
-  
-  const getElo = id => currentPlayers.find(p => p.id == id)?.elo || 1000;
-  
-  let elo1 = getElo(g.team1_player1);
-  if(g.team1_player2) elo1 = (elo1 + getElo(g.team1_player2)) / 2;
-  let elo2 = getElo(g.team2_player1);
-  if(g.team2_player2) elo2 = (elo2 + getElo(g.team2_player2)) / 2;
+  if (!currentPlayers) return;
+
+  const getElo = id => currentPlayers.find(p => p.id === id)?.elo || 1000;
+
+  const t1ids = [g.team1_player1, g.team1_player2].filter(Boolean);
+  const t2ids = [g.team2_player1, g.team2_player2].filter(Boolean);
+  const elo1 = t1ids.reduce((s, id) => s + getElo(id), 0) / t1ids.length;
+  const elo2 = t2ids.reduce((s, id) => s + getElo(id), 0) / t2ids.length;
 
   const k = 32;
   const exp1 = 1 / (1 + Math.pow(10, (elo2 - elo1) / 400));
   const actual1 = g.score_team1 > g.score_team2 ? 1 : (g.score_team1 < g.score_team2 ? 0 : 0.5);
   const diff = Math.round(k * (actual1 - exp1));
 
-  for (const id of [g.team1_player1, g.team1_player2].filter(Boolean)) {
+  for (const id of t1ids) {
     await sb.from('players').update({ elo: getElo(id) + diff }).eq('id', id);
   }
-  for (const id of [g.team2_player1, g.team2_player2].filter(Boolean)) {
+  for (const id of t2ids) {
     await sb.from('players').update({ elo: getElo(id) - diff }).eq('id', id);
   }
 }
@@ -188,120 +192,207 @@ async function resetSeason() {
   if (!confirm('Saison archivieren? Alle aktuellen Elos werden auf 1000 gesetzt.')) return;
   const { error: gErr } = await sb.from('games').update({ archived: true }).eq('archived', false);
   if (gErr) return alert(gErr.message);
-  await sb.from('players').update({ elo: 1000 }).neq('id', 0);
+  for (const p of players) {
+    await sb.from('players').update({ elo: 1000 }).eq('id', p.id);
+  }
   loadAll();
 }
 
+// BUG FIX 2: UUID braucht String-Anführungszeichen in onclick
 async function deleteGame(id) {
-  if (confirm('Spiel löschen?')) { await sb.from('games').delete().eq('id', id); loadAll(); }
+  if (confirm('Spiel löschen?')) {
+    await sb.from('games').delete().eq('id', id);
+    loadAll();
+  }
+}
+
+async function deletePlayer(id) {
+  if (confirm('Spieler löschen? Alle zugehörigen Spiele bleiben erhalten.')) {
+    await sb.from('players').delete().eq('id', id);
+    loadAll();
+  }
 }
 
 async function loadAll() {
-  const { data: pData } = await sb.from('players').select('*');
-  const { data: gData } = await sb.from('games').select('*').order('played_at', { ascending: true });
+  const { data: pData, error: pErr } = await sb.from('players').select('*').order('elo', { ascending: false });
+  const { data: gData, error: gErr } = await sb.from('games').select('*').order('played_at', { ascending: true });
   players = pData || [];
   games = gData || [];
-  
+
   updateDropdowns();
   renderStats();
   renderHistory();
-  renderEloChart();
-  renderH2H();
-  renderRadarChart();
+  renderAdminList();
+  if (document.getElementById('tab-charts').classList.contains('active')) {
+    renderEloChart();
+    renderH2H();
+    renderRadarChart();
+  }
 }
 
 function updateDropdowns() {
   const html = '<option value="">- Spieler -</option>' + players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  ['t1p1', 't1p2', 't2p1', 't2p2', 'radar-player-select'].forEach(id => {
+  ['t1p1', 't1p2', 't2p1', 't2p2'].forEach(id => {
     const el = document.getElementById(id);
     const v = el.value;
-    el.innerHTML = id === 'radar-player-select' ? players.map(p => `<option value="${p.id}">${p.name}</option>`).join('') : html;
+    el.innerHTML = html;
     el.value = v;
   });
+  const radarSel = document.getElementById('radar-player-select');
+  const rv = radarSel.value;
+  radarSel.innerHTML = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  radarSel.value = rv;
 }
 
 function renderStats() {
+  if (!players.length) {
+    document.getElementById('stats-table').innerHTML = '<p class="empty">Noch keine Spieler.</p>';
+    return;
+  }
   const activeGames = games.filter(g => !g.archived);
   const stats = players.map(p => {
-    const pGames = activeGames.filter(g => [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id));
-    let w = 0, l = 0, gf = 0, ga = 0, streak = 0;
+    const pGames = activeGames.filter(g =>
+      [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id)
+    );
+    let w = 0, l = 0, draws = 0, gf = 0, ga = 0;
+    let streak = 0, curStreak = 0;
     pGames.forEach(g => {
       const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
-      const won = isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
-      if (won) { w++; streak = streak >= 0 ? streak + 1 : 1; }
-      else { l++; streak = streak <= 0 ? streak - 1 : -1; }
-      gf += isT1 ? g.score_team1 : g.score_team2;
-      ga += isT1 ? g.score_team2 : g.score_team1;
+      const myScore = isT1 ? g.score_team1 : g.score_team2;
+      const oppScore = isT1 ? g.score_team2 : g.score_team1;
+      gf += myScore; ga += oppScore;
+      if (myScore > oppScore) { w++; curStreak = curStreak >= 0 ? curStreak + 1 : 1; }
+      else if (myScore < oppScore) { l++; curStreak = curStreak <= 0 ? curStreak - 1 : -1; }
+      else { draws++; curStreak = 0; }
     });
-    return { ...p, w, l, gf, ga, streak, wr: (w / (w + l || 1) * 100).toFixed(1) };
+    streak = curStreak;
+    return { ...p, w, l, draws, gf, ga, streak, played: w + l + draws,
+      wr: ((w / (w + l + draws || 1)) * 100).toFixed(1) };
   }).sort((a, b) => b.elo - a.elo);
 
-  let html = '<table><thead><tr><th>Spieler</th><th>Elo</th><th>Win%</th><th>S/N</th><th>Streak</th></tr></thead><tbody>';
-  stats.forEach(s => {
-    const stC = s.streak > 0 ? 'text-green' : (s.streak < 0 ? 'text-red' : '');
-    html += `<tr><td><strong>${s.name}</strong></td><td>${Math.round(s.elo)}</td><td>${s.wr}%</td><td>${s.w}/${s.l}</td><td class="${stC}">${s.streak > 0 ? '+' : ''}${s.streak}</td></tr>`;
+  let html = `<table>
+    <thead><tr>
+      <th>#</th><th>Spieler</th><th>Elo</th><th>Spiele</th><th>Win%</th><th>S/U/N</th><th>Diff</th><th>Streak</th>
+    </tr></thead><tbody>`;
+  stats.forEach((s, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+    const stClass = s.streak > 0 ? 'text-green' : (s.streak < 0 ? 'text-red' : '');
+    const stText = s.streak > 0 ? `+${s.streak}🔥` : s.streak < 0 ? `${s.streak}❄️` : '—';
+    const diff = s.gf - s.ga;
+    const diffStr = diff > 0 ? `+${diff}` : `${diff}`;
+    html += `<tr>
+      <td>${medal}</td>
+      <td><strong>${s.name}</strong></td>
+      <td><span class="elo-badge">${Math.round(s.elo)}</span></td>
+      <td>${s.played}</td>
+      <td>${s.wr}%</td>
+      <td>${s.w}/${s.draws}/${s.l}</td>
+      <td class="${diff >= 0 ? 'text-green' : 'text-red'}">${diffStr}</td>
+      <td class="${stClass}">${stText}</td>
+    </tr>`;
   });
   document.getElementById('stats-table').innerHTML = html + '</tbody></table>';
+}
+
+function renderHistory() {
+  if (!games.length) {
+    document.getElementById('game-history').innerHTML = '<p class="empty">Noch keine Spiele eingetragen.</p>';
+    return;
+  }
+  const gn = id => players.find(p => p.id === id)?.name || '?';
+  const html = games.slice().reverse().map(g => {
+    const t1 = [gn(g.team1_player1), gn(g.team1_player2)].filter(n => n !== '?').join(' & ');
+    const t2 = [gn(g.team2_player1), gn(g.team2_player2)].filter(n => n !== '?').join(' & ');
+    const winner = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
+    // BUG FIX 2: UUID als String übergeben
+    const del = role === 'admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn" title="Spiel löschen">✕</button>` : '';
+    const date = g.played_at ? new Date(g.played_at).toLocaleDateString('de-DE') : '';
+    return `<div class="game-row ${g.archived ? 'archived' : ''}">
+      <span class="teams ${winner === 1 ? 'winner' : ''}">${t1}</span>
+      <span class="score">${g.score_team1} : ${g.score_team2}</span>
+      <span class="teams ${winner === 2 ? 'winner' : ''}">${t2}</span>
+      <span class="game-date">${date} ${del}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('game-history').innerHTML = html;
+}
+
+function renderAdminList() {
+  if (role !== 'admin') return;
+  const el = document.getElementById('admin-player-list');
+  if (!el) return;
+  let html = '<h3>Spieler verwalten</h3><table><thead><tr><th>Name</th><th>Elo</th><th></th></tr></thead><tbody>';
+  players.forEach(p => {
+    html += `<tr><td>${p.name}</td><td>${Math.round(p.elo)}</td><td><button onclick="deletePlayer('${p.id}')" class="del-btn">✕</button></td></tr>`;
+  });
+  el.innerHTML = html + '</tbody></table>';
 }
 
 function renderEloChart() {
   if (charts.elo) charts.elo.destroy();
   const ctx = document.getElementById('eloHistoryChart').getContext('2d');
-  
+  const colors = ['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
+
   const datasets = players.map((p, i) => {
-    let currentElo = 1000;
+    let elo = 1000;
     const history = [{ x: 0, y: 1000 }];
-    let gameIndex = 1;
-    
-    // Wir simulieren den Verlauf über alle Spiele hinweg (auch archivierte für die Langzeitkurve)
+    let idx = 1;
     games.forEach(g => {
       const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
       const isT2 = [g.team2_player1, g.team2_player2].includes(p.id);
       if (!isT1 && !isT2) return;
-      
-      // Hier müssten wir eigentlich die Elos ALLER Spieler zum Zeitpunkt des Spiels wissen.
-      // Da wir nur End-Elos haben, ist dies eine Annäherung oder wir müssten die ganze DB historisch tracken.
-      // Für die Demo nutzen wir die gespeicherten Elos (falls vorhanden) oder simulieren einfach.
-      // Da wir keine historischen Elos pro Spiel speichern, nehmen wir hier eine vereinfachte Kurve.
       const won = isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
-      currentElo += won ? 15 : -15; // Vereinfachter Verlauf
-      history.push({ x: gameIndex++, y: currentElo });
+      const drew = g.score_team1 === g.score_team2;
+      elo += drew ? 0 : (won ? 16 : -16);
+      history.push({ x: idx++, y: elo });
     });
-    
     return {
       label: p.name,
       data: history,
-      borderColor: `hsl(${i * 137.5}, 70%, 50%)`,
+      borderColor: colors[i % colors.length],
+      backgroundColor: colors[i % colors.length] + '22',
       fill: false,
-      tension: 0.1
+      tension: 0.3,
+      pointRadius: 3
     };
   });
 
   charts.elo = new Chart(ctx, {
     type: 'line',
     data: { datasets },
-    options: { responsive: true, scales: { x: { type: 'linear', title: { display: true, text: 'Spiele' } } } }
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { type: 'linear', title: { display: true, text: 'Spiele' } },
+        y: { title: { display: true, text: 'Elo' } }
+      }
+    }
   });
 }
 
 function renderH2H() {
-  let html = '<table><thead><tr><th>H2H (W-L)</th>' + players.map(p => `<th>${p.name.slice(0,3)}</th>`).join('') + '</tr></thead><tbody>';
+  if (!players.length) return;
+  let html = '<table><thead><tr><th>H2H (S-N)</th>' +
+    players.map(p => `<th title="${p.name}">${p.name.slice(0,4)}</th>`).join('') +
+    '</tr></thead><tbody>';
   players.forEach(p1 => {
     html += `<tr><td><strong>${p1.name}</strong></td>`;
     players.forEach(p2 => {
-      if (p1.id === p2.id) { html += '<td>-</td>'; return; }
+      if (p1.id === p2.id) { html += '<td class="h2h-self">—</td>'; return; }
       const vs = games.filter(g => {
         const t1 = [g.team1_player1, g.team1_player2];
         const t2 = [g.team2_player1, g.team2_player2];
         return (t1.includes(p1.id) && t2.includes(p2.id)) || (t2.includes(p1.id) && t1.includes(p2.id));
       });
-      let p1Wins = 0, p2Wins = 0;
+      let w = 0, l = 0;
       vs.forEach(g => {
         const p1InT1 = [g.team1_player1, g.team1_player2].includes(p1.id);
-        if ((p1InT1 && g.score_team1 > g.score_team2) || (!p1InT1 && g.score_team2 > g.score_team1)) p1Wins++;
-        else p2Wins++;
+        if ((p1InT1 && g.score_team1 > g.score_team2) || (!p1InT1 && g.score_team2 > g.score_team1)) w++;
+        else l++;
       });
-      html += `<td>${p1Wins}-${p2Wins}</td>`;
+      const cls = w > l ? 'h2h-win' : w < l ? 'h2h-lose' : '';
+      html += `<td class="${cls}">${w}-${l}</td>`;
     });
     html += '</tr>';
   });
@@ -312,23 +403,23 @@ function renderRadarChart() {
   if (charts.radar) charts.radar.destroy();
   const pId = document.getElementById('radar-player-select').value;
   if (!pId) return;
-  const p = players.find(x => x.id == pId);
-  const pGames = games.filter(g => [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id));
-  
-  // Metriken berechnen (0-100)
-  const avgGF = pGames.reduce((acc, g) => acc + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team1 : g.score_team2), 0) / (pGames.length || 1);
-  const avgGA = pGames.reduce((acc, g) => acc + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team2 : g.score_team1), 0) / (pGames.length || 1);
-  
-  const attack = Math.min(100, avgGF * 15);
-  const defense = Math.max(0, 100 - (avgGA * 15));
+  const p = players.find(x => x.id === pId);
+  if (!p) return;
+  const pGames = games.filter(g =>
+    [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id)
+  );
+  if (!pGames.length) return;
+
+  const avgGF = pGames.reduce((a, g) => a + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team1 : g.score_team2), 0) / pGames.length;
+  const avgGA = pGames.reduce((a, g) => a + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team2 : g.score_team1), 0) / pGames.length;
   const winRate = (pGames.filter(g => {
     const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
     return isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
-  }).length / (pGames.length || 1)) * 100;
-  
-  // Team Chemie: Winrate mit Partner vs Winrate Alleine (hier vereinfacht: Anteil 2v2 Siege)
-  const chemistry = (pGames.filter(g => (g.team1_player2 || g.team2_player2)).length / (pGames.length || 1)) * 100;
-  
+  }).length / pGames.length) * 100;
+  const teamGames = pGames.filter(g => g.team1_player2 || g.team2_player2).length;
+  const chemistry = pGames.length ? (teamGames / pGames.length) * 100 : 0;
+  const eloScore = Math.min(100, ((p.elo - 800) / 400) * 100);
+
   const ctx = document.getElementById('playerRadarChart').getContext('2d');
   charts.radar = new Chart(ctx, {
     type: 'radar',
@@ -336,71 +427,186 @@ function renderRadarChart() {
       labels: ['Angriff', 'Abwehr', 'Win Rate', 'Team-Player', 'Elo-Power'],
       datasets: [{
         label: p.name,
-        data: [attack, defense, winRate, chemistry, (p.elo / 1500) * 100],
-        backgroundColor: 'rgba(52, 152, 219, 0.2)',
-        borderColor: '#3498db'
+        data: [
+          Math.min(100, avgGF * 15),
+          Math.max(0, 100 - avgGA * 15),
+          winRate,
+          chemistry,
+          eloScore
+        ],
+        backgroundColor: 'rgba(52,152,219,0.2)',
+        borderColor: '#3498db',
+        pointBackgroundColor: '#3498db'
       }]
     },
-    options: { scales: { r: { min: 0, max: 100 } } }
+    options: {
+      scales: { r: { min: 0, max: 100, ticks: { stepSize: 25 } } }
+    }
   });
-}
-
-function renderHistory() {
-  const gn = id => players.find(p => p.id == id)?.name || '';
-  const html = games.slice().reverse().map(g => {
-    const t1 = [gn(g.team1_player1), gn(g.team1_player2)].filter(Boolean).join(' & ');
-    const t2 = [gn(g.team2_player1), gn(g.team2_player2)].filter(Boolean).join(' & ');
-    const del = role === 'admin' ? `<button onclick="deleteGame(${g.id})" class="del-btn">X</button>` : '';
-    return `<div class="game-row ${g.archived ? 'archived' : ''}">
-      <span class="teams">${t1}</span>
-      <span class="score">${g.score_team1}:${g.score_team2}</span>
-      <span class="teams">${t2} ${del}</span>
-    </div>`;
-  }).join('');
-  document.getElementById('game-history').innerHTML = html || 'Keine Spiele.';
 }
 
 function predictOutcome() {
   const t1 = [document.getElementById('t1p1').value, document.getElementById('t1p2').value].filter(Boolean);
   const t2 = [document.getElementById('t2p1').value, document.getElementById('t2p2').value].filter(Boolean);
-  if (t1.length < 1 || t2.length < 1) return;
-  
-  const getAvgElo = ids => ids.reduce((a, b) => a + (players.find(p => p.id == b)?.elo || 1000), 0) / ids.length;
+  if (!t1.length || !t2.length) return;
+  const getAvgElo = ids => ids.reduce((a, id) => a + (players.find(p => p.id === id)?.elo || 1000), 0) / ids.length;
   const e1 = getAvgElo(t1), e2 = getAvgElo(t2);
   const prob = (1 / (1 + Math.pow(10, (e2 - e1) / 400)) * 100).toFixed(1);
-  document.getElementById('prediction-box').innerHTML = `💡 Prognose: Team 1 hat eine <strong>${prob}%</strong> Chance zu gewinnen.`;
+  const box = document.getElementById('prediction-box');
+  box.innerHTML = `💡 Prognose: Team 1 gewinnt mit <strong>${prob}%</strong> Wahrscheinlichkeit`;
+  box.style.display = 'block';
 }
 
+// Charts erst laden wenn Tab aktiv wird
+document.querySelectorAll('.main-tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tabId = btn.getAttribute('onclick').match(/'([^']+)'/)?.[1];
+    if (tabId === 'charts') {
+      setTimeout(() => { renderEloChart(); renderH2H(); renderRadarChart(); }, 50);
+    }
+  });
+});
+
+// Direkt laden (öffentlich lesbar dank RLS)
 loadAll();
 </script>
 
 <style>
-:root { --primary: #3498db; --bg: #f4f7f6; --card: #ffffff; --text: #2c3e50; }
-body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; }
+:root {
+  --primary: #3498db;
+  --primary-dark: #2980b9;
+  --success: #27ae60;
+  --danger: #e74c3c;
+  --warning: #e67e22;
+  --bg: #f4f7f6;
+  --card: #ffffff;
+  --text: #2c3e50;
+  --muted: #7f8c8d;
+  --border: #ecf0f1;
+}
 .kicker-app { max-width: 900px; margin: 20px auto; padding: 20px; }
-h1 { text-align: center; font-size: 2.5em; margin-bottom: 30px; }
-.main-tabs { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
-.main-tabs button { padding: 12px 25px; border: none; border-radius: 30px; background: #ddd; cursor: pointer; font-weight: bold; transition: 0.3s; }
-.main-tabs button.active { background: var(--primary); color: white; box-shadow: 0 4px 10px rgba(52,152,219,0.3); }
+h1 { text-align: center; font-size: 2.2em; margin-bottom: 30px; }
+h2 { font-size: 1.2em; margin-bottom: 15px; color: var(--text); }
+h3 { font-size: 1em; color: var(--muted); margin-bottom: 10px; }
+
+/* Tabs */
+.main-tabs { display: flex; gap: 8px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; }
+.main-tabs button {
+  padding: 10px 22px; border: none; border-radius: 30px;
+  background: #dde3e7; cursor: pointer; font-weight: 600;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  font-size: 0.95em;
+}
+.main-tabs button.active { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(52,152,219,0.35); }
+.main-tabs button:hover:not(.active) { background: #c8d0d8; }
+
 .tab-content { display: none; }
-.tab-content.active { display: block; animation: fadeIn 0.5s; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-section { background: var(--card); padding: 25px; border-radius: 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); margin-bottom: 25px; }
+.tab-content.active { display: block; animation: fadeIn 0.35s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Cards */
+section {
+  background: var(--card); padding: 22px;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  margin-bottom: 20px;
+}
+
+/* Login */
+.login-card { max-width: 380px; margin: 0 auto; text-align: center; }
+.login-card h3 { margin-bottom: 15px; font-size: 1.2em; }
+.login-hint { margin-top: 10px; color: var(--muted); font-size: 0.85em; }
+
+/* Forms */
 .input-group { display: flex; gap: 10px; }
-input, select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1em; }
-button { padding: 10px 20px; border-radius: 8px; cursor: pointer; border: none; }
-.submit-btn { width: 100%; background: #27ae60; color: white; font-weight: bold; margin-top: 15px; font-size: 1.1em; }
-.team-input { background: #f9f9f9; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #eee; }
-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-th, td { text-align: left; padding: 15px; border-bottom: 1px solid #eee; }
-th { background: #fcfcfc; color: #7f8c8d; font-size: 0.9em; text-transform: uppercase; }
-.game-row { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee; }
-.game-row.archived { opacity: 0.5; font-style: italic; background: #fcfcfc; }
-.score { font-weight: bold; background: #ecf0f1; padding: 8px 16px; border-radius: 20px; min-width: 60px; text-align: center; }
-.teams { flex: 1; }
-.text-green { color: #27ae60; font-weight: bold; }
-.text-red { color: #e74c3c; font-weight: bold; }
-#prediction-box { background: #e8f4fd; padding: 12px; border-radius: 8px; text-align: center; margin: 10px 0; border: 1px solid #3498db; }
-.del-btn { background: #e74c3c; color: white; padding: 4px 8px; font-size: 0.8em; }
-canvas { max-width: 100%; margin-top: 20px; }
+input, select {
+  flex: 1; padding: 11px 14px;
+  border: 1px solid #dde3e7;
+  border-radius: 8px; font-size: 0.95em;
+  background: #fafbfc;
+  transition: border-color 0.2s;
+}
+input:focus, select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(52,152,219,0.15); }
+button {
+  padding: 10px 18px; border-radius: 8px;
+  cursor: pointer; border: none;
+  background: var(--primary); color: white;
+  font-weight: 600; transition: background 0.2s;
+}
+button:hover { background: var(--primary-dark); }
+.submit-btn { width: 100%; background: var(--success); font-size: 1.05em; padding: 13px; margin-top: 12px; }
+.submit-btn:hover { background: #219a52; }
+.danger-btn { width: 100%; background: var(--warning); color: white; font-weight: 600; }
+.danger-btn:hover { background: #d35400; }
+.del-btn {
+  background: none; color: var(--danger);
+  font-size: 0.9em; padding: 4px 8px;
+  border: 1px solid var(--danger); border-radius: 6px;
+  margin-left: 6px; opacity: 0.7;
+}
+.del-btn:hover { opacity: 1; background: #fde8e8; }
+
+/* Game Form */
+.game-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.game-form .submit-btn, .game-form #prediction-box { grid-column: 1 / -1; }
+.team-input {
+  background: #f8fafc; padding: 14px;
+  border-radius: 10px; display: flex;
+  flex-direction: column; gap: 8px;
+  border: 1px solid var(--border);
+}
+#prediction-box {
+  background: #eaf4fb; border: 1px solid #aed9f5;
+  border-radius: 8px; padding: 12px;
+  text-align: center; display: none;
+  font-size: 0.95em;
+}
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 0.93em; }
+th { background: #f8f9fa; color: var(--muted); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+.elo-badge {
+  display: inline-block; background: var(--primary);
+  color: white; padding: 2px 10px;
+  border-radius: 20px; font-size: 0.88em; font-weight: 700;
+}
+.h2h-self { color: var(--muted); text-align: center; }
+.h2h-win { color: var(--success); font-weight: 700; }
+.h2h-lose { color: var(--danger); }
+
+/* Game History */
+.game-row {
+  display: flex; justify-content: space-between;
+  align-items: center; padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+.game-row:last-child { border-bottom: none; }
+.game-row.archived { opacity: 0.45; font-style: italic; }
+.score {
+  font-weight: 800; background: #ecf0f1;
+  padding: 6px 14px; border-radius: 20px;
+  min-width: 70px; text-align: center;
+  font-size: 1.05em; letter-spacing: 1px;
+  flex-shrink: 0;
+}
+.teams { flex: 1; font-size: 0.95em; }
+.teams.winner { font-weight: 700; color: var(--success); }
+.game-date { font-size: 0.8em; color: var(--muted); white-space: nowrap; }
+
+/* Misc */
+.loading { color: var(--muted); padding: 20px; text-align: center; }
+.empty { color: var(--muted); text-align: center; padding: 20px 0; font-style: italic; }
+.text-green { color: var(--success); font-weight: 700; }
+.text-red { color: var(--danger); font-weight: 700; }
+
+@media (max-width: 600px) {
+  .game-form { grid-template-columns: 1fr; }
+  .main-tabs button { padding: 8px 14px; font-size: 0.85em; }
+  th, td { padding: 9px 8px; }
+  h1 { font-size: 1.7em; }
+}
 </style>
