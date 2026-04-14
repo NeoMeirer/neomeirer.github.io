@@ -4,7 +4,6 @@ layout: default
 <div class="kicker-app">
   <header class="app-header">
     <h1>🏆 Kicker Liga Pro</h1>
-    <p class="app-subtitle">Einfache Ansicht ohne Saisonwechsel.</p>
   </header>
   <nav class="main-tabs">
     <button onclick="switchTab('stats', this)" class="active">Stats</button>
@@ -33,7 +32,6 @@ layout: default
     <section>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
         <h2>Rangliste</h2>
-        <span style="font-size:0.9em; color:#5f6f7a;">Alle Spiele</span>
       </div>
       <div id="stats-table"><div class="loading">Lädt...</div></div>
     </section>
@@ -49,7 +47,7 @@ layout: default
       <div id="h2h-matrix" style="overflow-x: auto;"></div>
     </section>
     <section>
-      <h2>Spieler-Analyse (Radar)</h2>
+      <h2>Spieler-Analyse</h2>
       <select id="radar-player-select" onchange="renderRadarChart()"></select>
       <canvas id="playerRadarChart"></canvas>
     </section>
