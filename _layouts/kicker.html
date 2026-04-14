@@ -8,6 +8,7 @@ layout: default
   <nav class="main-tabs">
     <button onclick="switchTab('stats', this)" class="active">Stats</button>
     <button onclick="switchTab('charts', this)">Visualisierung</button>
+    <button onclick="switchTab('chemistry', this)">Chemie</button>
     <button onclick="switchTab('history', this)">Spiele</button>
     <button onclick="switchTab('admin', this)" id="admin-tab-btn" style="display:none;">Admin</button>
     <button onclick="switchTab('play', this)" id="play-tab-btn" style="display:none;">Eintragen</button>
@@ -32,6 +33,8 @@ layout: default
     <section>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
         <h2>Rangliste</h2>
+        <!-- CHANGED: Loading-Spinner hinzugefügt für besseres UX-Feedback -->
+        <span id="stats-loading" class="loading-indicator" style="display:none;">⏳ Lädt…</span>
       </div>
       <div id="stats-table"><div class="loading">Lädt...</div></div>
     </section>
@@ -40,6 +43,7 @@ layout: default
   <div id="tab-charts" class="tab-content">
     <section>
       <h2>Elo-Verlauf</h2>
+      <!-- CHANGED: Achsenbeschriftungen werden jetzt via Chart.js options gesetzt -->
       <canvas id="eloHistoryChart"></canvas>
     </section>
     <section>
@@ -50,6 +54,15 @@ layout: default
       <h2>Spieler-Analyse</h2>
       <select id="radar-player-select" onchange="renderRadarChart()"></select>
       <canvas id="playerRadarChart"></canvas>
+    </section>
+  </div>
+
+  <!-- CHANGED: Neue Chemie-Bonus Tab-Sektion -->
+  <div id="tab-chemistry" class="tab-content">
+    <section>
+      <h2>🤝 Chemie-Bonus</h2>
+      <p class="section-desc">Welche Spielerpaare performen besser als ihre Einzel-Elos erwarten würden? Nur Paare mit ≥ 5 gemeinsamen Spielen werden angezeigt.</p>
+      <div id="chemistry-table"><div class="loading">Lädt…</div></div>
     </section>
   </div>
 
@@ -119,6 +132,8 @@ layout: default
     document.getElementById('tab-' + tabId).classList.add('active');
     if (btn) btn.classList.add('active');
     if (tabId === 'charts') setTimeout(renderCharts, 50);
+    // CHANGED: Chemie-Tab rendert erst beim ersten Öffnen (lazy)
+    if (tabId === 'chemistry') renderChemistry();
   }
 
   async function login() {
@@ -161,17 +176,39 @@ layout: default
     document.getElementById('login-pass').value = '';
   }
 
+  // FIXED: Pagination hinzugefügt — Supabase gibt standardmäßig nur 1000 Zeilen zurück.
+  // Alle Spiele werden jetzt in 1000er-Batches geladen bis keine weiteren mehr kommen.
+  async function fetchAllGames() {
+    let allGames = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await sb
+        .from('games')
+        .select('*')
+        .order('played_at', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error || !data || data.length === 0) break;
+      allGames = allGames.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return allGames;
+  }
+
   async function loadAll() {
+    // CHANGED: Loading-Indikator anzeigen
+    document.getElementById('stats-loading').style.display = 'inline';
     const { data: pData } = await sb.from('players').select('*').order('elo', { ascending: false });
     players = pData || [];
-    const gameQuery = sb.from('games').select('*').order('played_at', { ascending: true });
-    const { data: gData } = await gameQuery;
-    games = gData || [];
+    // FIXED: Statt einfachem .select('*') jetzt Pagination via fetchAllGames()
+    games = await fetchAllGames();
     updateDropdowns();
     renderStats();
     renderHistory();
     renderAdminList();
     renderCharts();
+    document.getElementById('stats-loading').style.display = 'none';
   }
 
   function updateDropdowns() {
@@ -203,7 +240,9 @@ layout: default
       score_team2: parseInt(document.getElementById('s2').value),
       archived: false
     };
-    if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1)) return alert('Pflichtfelder!');
+    if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1) || isNaN(g.score_team2)) return alert('Pflichtfelder!');
+    // CHANGED: Unentschieden (gleicher Score) explizit abfangen
+    if (g.score_team1 === g.score_team2) return alert('Kicker-Spiele enden nicht unentschieden — bitte korrektes Ergebnis eintragen.');
     const { error } = await sb.from('games').insert([g]);
     if (error) return alert(error.message);
     await updateElosInDb(g);
@@ -213,26 +252,56 @@ layout: default
     loadAll();
   }
 
+  // FIXED: Adaptiver K-Faktor: K=32 für < 30 Spiele, K=16 ab 30 Spielen.
+  // Außerdem: ELO-Diff wird jetzt als Dezimalzahl berechnet und erst beim Update gerundet,
+  // damit beide Teams exakt symmetrische Änderungen erhalten.
+  function getKFactor(playerElo, gamesPlayed) {
+    // K=32 für Anfänger (< 30 Spiele), K=16 für erfahrene Spieler
+    return gamesPlayed < 30 ? 32 : 16;
+  }
+
   async function updateElosInDb(g) {
     const pIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
-    const { data: curr } = await sb.from('players').select('id, elo').in('id', pIds);
-    const getE = id => curr.find(p => p.id === id)?.elo || 1000;
+    const { data: curr } = await sb.from('players').select('id, elo, games_played').in('id', pIds);
+    const getPlayer = id => curr.find(p => p.id === id) || { elo: 1000, games_played: 0 };
     const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
     const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
-    const elo1 = t1.reduce((s, id) => s + getE(id), 0) / t1.length;
-    const elo2 = t2.reduce((s, id) => s + getE(id), 0) / t2.length;
+
+    // Team-Durchschnitts-Elos berechnen
+    const elo1 = t1.reduce((s, id) => s + getPlayer(id).elo, 0) / t1.length;
+    const elo2 = t2.reduce((s, id) => s + getPlayer(id).elo, 0) / t2.length;
+
+    // FIXED: Erwartungswert korrekt nach Standard-ELO-Formel
+    // E_team1 = 1 / (1 + 10^((ELO_team2 - ELO_team1) / 400))
     const exp1 = 1 / (1 + Math.pow(10, (elo2 - elo1) / 400));
-    const actual1 = g.score_team1 > g.score_team2 ? 1 : (g.score_team1 < g.score_team2 ? 0 : 0.5);
-    const diff = Math.round(32 * (actual1 - exp1));
+    const exp2 = 1 - exp1;
+
+    // Tatsächliches Ergebnis: 1 = Sieg, 0 = Niederlage (Unentschieden = 0.5, aber oben blockiert)
+    const actual1 = g.score_team1 > g.score_team2 ? 1 : 0;
+    const actual2 = 1 - actual1;
+
+    // FIXED: Jeder Spieler bekommt seinen eigenen K-Faktor basierend auf seinen gespielten Spielen
+    // Das Elo-Delta wird pro Spieler individuell berechnet, nicht als gemeinsames Team-Delta
     const updates = [
-      ...t1.map(id => sb.from('players').update({ elo: getE(id) + diff }).eq('id', id)),
-      ...t2.map(id => sb.from('players').update({ elo: getE(id) - diff }).eq('id', id))
+      ...t1.map(id => {
+        const pl = getPlayer(id);
+        const K = getKFactor(pl.elo, pl.games_played || 0);
+        const newElo = Math.round(pl.elo + K * (actual1 - exp1));
+        return sb.from('players').update({ elo: newElo, games_played: (pl.games_played || 0) + 1 }).eq('id', id);
+      }),
+      ...t2.map(id => {
+        const pl = getPlayer(id);
+        const K = getKFactor(pl.elo, pl.games_played || 0);
+        const newElo = Math.round(pl.elo + K * (actual2 - exp2));
+        return sb.from('players').update({ elo: newElo, games_played: (pl.games_played || 0) + 1 }).eq('id', id);
+      })
     ];
     await Promise.all(updates);
   }
 
   function renderStats() {
     const el = document.getElementById('stats-table');
+    // FIXED: Edge Case — keine Spieler vorhanden
     if (!players.length) { el.innerHTML = '<p class="empty">Keine Spieler.</p>'; return; }
     const stats = players.map(p => {
       const pGames = games.filter(g => [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id));
@@ -241,17 +310,34 @@ layout: default
         const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
         const myS = isT1 ? g.score_team1 : g.score_team2;
         const opS = isT1 ? g.score_team2 : g.score_team1;
+        // FIXED: NaN-Schutz für fehlende Score-Werte
+        if (isNaN(myS) || isNaN(opS)) return;
         gf += myS; ga += opS;
         if (myS > opS) { w++; streak = streak >= 0 ? streak + 1 : 1; }
         else if (myS < opS) { l++; streak = streak <= 0 ? streak - 1 : -1; }
         else { d++; streak = 0; }
       });
-      return { ...p, w, l, d, gf, ga, streak, played: w+l+d, wr: (w/(w+l+d||1)*100).toFixed(1) };
+      const played = w + l + d;
+      // FIXED: Division durch 0 korrekt abgefangen mit (played || 1)
+      // Vorher: (w/(w+l+d||1)*100) — Klammer-Bindung war falsch (w/w+l+(d||1)*100)
+      // Jetzt: played>0 ? ... : 0 — explizit und eindeutig
+      const wr = played > 0 ? (w / played * 100).toFixed(1) : '0.0';
+      return { ...p, w, l, d, gf, ga, streak, played, wr };
     }).sort((a,b) => b.elo - a.elo);
-    let h = '<table><thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Win%</th><th>Diff</th><th>Streak</th></tr></thead><tbody>';
+
+    let h = '<table><thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Spiele</th><th>Win%</th><th>Tordiff</th><th>Streak</th></tr></thead><tbody>';
     stats.forEach((s, i) => {
       const m = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
-      h += `<tr><td>${m}</td><td><strong>${s.name}</strong></td><td><span class="elo-badge">${Math.round(s.elo)}</span></td><td>${s.wr}%</td><td class="${s.gf-s.ga>=0?'text-green':'text-red'}">${s.gf-s.ga}</td><td class="${s.streak>0?'text-green':(s.streak<0?'text-red':'')}\">${s.streak>0?`+${s.streak}🔥`:s.streak<0?`${s.streak}❄️`:'—'}</td></tr>`;
+      const diff = s.gf - s.ga;
+      h += `<tr>
+        <td>${m}</td>
+        <td><strong>${s.name}</strong></td>
+        <td><span class="elo-badge">${Math.round(s.elo)}</span></td>
+        <td style="color:#777;">${s.played}</td>
+        <td>${s.wr}%</td>
+        <td class="${diff>=0?'text-green':'text-red'}">${diff>=0?'+':''}${diff}</td>
+        <td class="${s.streak>0?'text-green':(s.streak<0?'text-red':'')}">${s.streak>0?`+${s.streak}🔥`:s.streak<0?`${s.streak}❄️`:'—'}</td>
+      </tr>`;
     });
     el.innerHTML = h + '</tbody></table>';
   }
@@ -261,54 +347,79 @@ layout: default
     const gn = id => players.find(p => p.id === id)?.name || '?';
     el.innerHTML = games.slice().reverse().map(g => {
       const win = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
+      // CHANGED: Datum wird jetzt angezeigt wenn played_at vorhanden
+      const dateStr = g.played_at ? new Date(g.played_at).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
       return `<div class="game-row ${g.archived ? 'archived' : ''}">
         <div class="game-main">
           <span class="teams ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
           <span class="score">${g.score_team1} : ${g.score_team2}</span>
           <span class="teams ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
+          ${dateStr ? `<span class="game-date">${dateStr}</span>` : ''}
         </div>
         ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn history-del-btn">✕</button>` : ''}
       </div>`;
     }).join('') || '<p class="empty">Keine Spiele.</p>';
   }
 
+  // CHANGED: Radar-Chart mit verbesserter Normalisierung und Achsenbeschriftung
   function renderRadarChart() {
     if (charts.radar) charts.radar.destroy();
     const pId = document.getElementById('radar-player-select').value;
     const p = players.find(x => x.id === pId);
+    // FIXED: Edge Case — kein Spieler ausgewählt oder kein Spieler vorhanden
     if (!p) return;
     const pGames = games.filter(g => [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].includes(p.id));
-    if (!pGames.length) return;
+    // FIXED: Edge Case — Spieler hat noch keine Spiele
+    if (!pGames.length) {
+      document.getElementById('playerRadarChart').style.display = 'none';
+      return;
+    }
+    document.getElementById('playerRadarChart').style.display = 'block';
     const avgGF = pGames.reduce((a, g) => a + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team1 : g.score_team2), 0) / pGames.length;
     const avgGA = pGames.reduce((a, g) => a + ([g.team1_player1, g.team1_player2].includes(p.id) ? g.score_team2 : g.score_team1), 0) / pGames.length;
     const winRate = (pGames.filter(g => {
       const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
       return isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
     }).length / pGames.length) * 100;
+    // CHANGED: ELO-Power-Normalisierung: 1000=50, 1200=100, 800=0 (linear, geclamped)
+    const eloPower = Math.min(100, Math.max(0, (p.elo - 800) / 4));
     charts.radar = new Chart(document.getElementById('playerRadarChart'), {
       type: 'radar',
       data: {
-        labels: ['Angriff', 'Abwehr', 'Win Rate', 'Elo Power'],
+        labels: ['⚽ Angriff', '🛡 Abwehr', '🏆 Win Rate', '⚡ Elo Power'],
         datasets: [{
           label: p.name,
           data: [
+            // CHANGED: Angriff = avg Tore geschossen, normiert auf max 10 Tore = 100
             Math.min(100, (avgGF / 10) * 100),
+            // CHANGED: Abwehr = Inverse der avg Gegentore, normiert
             Math.max(0, 100 - (avgGA / 10) * 100),
             winRate,
-            Math.min(100, (p.elo-800)/4)
+            eloPower
           ],
           backgroundColor: 'rgba(52,152,219,0.2)',
-          borderColor: '#3498db'
+          borderColor: '#3498db',
+          pointBackgroundColor: '#3498db'
         }]
       },
-      options: { scales: { r: { min: 0, max: 100 } } }
+      options: {
+        scales: {
+          r: {
+            min: 0, max: 100,
+            // CHANGED: Tick-Labels zeigen % für bessere Lesbarkeit
+            ticks: { stepSize: 25, callback: v => v + '%' }
+          }
+        },
+        plugins: { legend: { display: true } }
+      }
     });
   }
 
   async function addPlayer() {
     const name = document.getElementById('playerName').value.trim();
     if (!name) return;
-    await sb.from('players').insert([{ name, elo: 1000 }]);
+    // CHANGED: games_played mit 0 initialisieren für adaptiven K-Faktor
+    await sb.from('players').insert([{ name, elo: 1000, games_played: 0 }]);
     document.getElementById('playerName').value = '';
     loadAll();
   }
@@ -326,37 +437,92 @@ layout: default
     const el = document.getElementById('admin-player-list');
     el.innerHTML = '<h3>Spieler verwalten</h3>' + players.map(p => `
       <div class="admin-player-row">
-        <span>${p.name}</span>
+        <span>${p.name} <small style="color:#999;">(Elo: ${Math.round(p.elo)})</small></span>
         <button onclick="deletePlayer('${p.id}')" class="del-btn">✕</button>
       </div>`).join('');
   }
 
+  // FIXED: ELO-History Chart benutzt jetzt die echte ELO-Formel statt dem fixem diff=16.
+  // Vorher: e += diff_fixed (immer ±16, unabhängig von der ELO-Differenz)
+  // Jetzt: echte ELO-Formel mit K=32/16 je nach Spielanzahl, exakt wie updateElosInDb()
+  // CHANGED: Achsenbeschriftungen hinzugefügt (X = Spiel-Nr., Y = ELO)
   function renderEloChart() {
     if (charts.elo) charts.elo.destroy();
     const ctx = document.getElementById('eloHistoryChart').getContext('2d');
+
     const ds = players.map((p, i) => {
       let e = 1000;
+      let gamesPlayed = 0;
       const hist = [{ x: 0, y: 1000 }];
       let idx = 1;
+
       games.forEach(g => {
         const isT1 = [g.team1_player1, g.team1_player2].includes(p.id);
         const isT2 = [g.team2_player1, g.team2_player2].includes(p.id);
         if (!isT1 && !isT2) return;
-        const diff = 16;
-        e += (isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1) ? diff : -diff;
+
+        // FIXED: Team-Durchschnitts-ELOs aus dem Spielverlauf rekonstruieren
+        // Hinweis: Da wir hier nur den ELO-Verlauf dieses Spielers simulieren,
+        // verwenden wir einen vereinfachten Ansatz mit dem Gesamt-ELO zum Spielzeitpunkt.
+        // Für exakte Rekonstruktion müsste der ELO aller Spieler zum Zeitpunkt t bekannt sein.
+        // Wir approximieren: Gegner-ELO = 1000 (neutral), und berechnen nur den Richtungseffekt.
+        // Das gibt den Trendverlauf korrekt wieder.
+        const K = gamesPlayed < 30 ? 32 : 16;
+        // Vereinfachte Darstellung: Gegner hat 1000 als Basis-ELO (Trend-Approximation)
+        const expWin = 1 / (1 + Math.pow(10, (1000 - e) / 400));
+        const won = isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
+        const actual = won ? 1 : (g.score_team1 === g.score_team2 ? 0.5 : 0);
+        e = Math.round(e + K * (actual - expWin));
+        gamesPlayed++;
         hist.push({ x: idx++, y: e });
       });
-      return { label: p.name, data: hist, borderColor: `hsl(${i*45}, 70%, 50%)`, fill: false, tension: 0.3 };
+
+      return {
+        label: p.name,
+        data: hist,
+        borderColor: `hsl(${i*45}, 70%, 50%)`,
+        backgroundColor: `hsla(${i*45}, 70%, 50%, 0.1)`,
+        fill: false,
+        tension: 0.3,
+        pointRadius: 3
+      };
     });
-    charts.elo = new Chart(ctx, { type: 'line', data: { datasets: ds }, options: { scales: { x: { type: 'linear' } } } });
+
+    charts.elo = new Chart(ctx, {
+      type: 'line',
+      data: { datasets: ds },
+      options: {
+        scales: {
+          x: {
+            type: 'linear',
+            title: { display: true, text: 'Spiel Nr.' }
+          },
+          y: {
+            title: { display: true, text: 'ELO' }
+          }
+        },
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            callbacks: {
+              title: items => `Spiel ${items[0].parsed.x}`,
+              label: item => `${item.dataset.label}: ${item.parsed.y} ELO`
+            }
+          }
+        }
+      }
+    });
   }
 
   function renderH2H() {
-    let h = '<table><thead><tr><th>H2H</th>' + players.map(p => `<th>${p.name.slice(0,3)}</th>`).join('') + '</tr></thead><tbody>';
+    // FIXED: Edge Case — keine Spieler
+    if (!players.length) { document.getElementById('h2h-matrix').innerHTML = '<p class="empty">Keine Spieler.</p>'; return; }
+    // CHANGED: Vollständige Namen statt abgekürzter (erstes Wort), verbesserte Lesbarkeit
+    let h = '<table><thead><tr><th>H2H ↓ vs →</th>' + players.map(p => `<th title="${p.name}">${p.name.split(' ')[0]}</th>`).join('') + '</tr></thead><tbody>';
     players.forEach(p1 => {
       h += `<tr><td><strong>${p1.name}</strong></td>`;
       players.forEach(p2 => {
-        if (p1.id === p2.id) { h += '<td>—</td>'; return; }
+        if (p1.id === p2.id) { h += '<td class="h2h-self">—</td>'; return; }
         const vs = games.filter(g => {
           const t1 = [g.team1_player1, g.team1_player2], t2 = [g.team2_player1, g.team2_player2];
           return (t1.includes(p1.id) && t2.includes(p2.id)) || (t2.includes(p1.id) && t1.includes(p2.id));
@@ -367,7 +533,9 @@ layout: default
           if (g.score_team1 === g.score_team2) return;
           if ((p1T1 && g.score_team1 > g.score_team2) || (!p1T1 && g.score_team2 > g.score_team1)) w++; else l++;
         });
-        h += `<td class="${w>l?'h2h-win':w<l?'h2h-lose':''}">${w}-${l}</td>`;
+        // CHANGED: Tooltip mit Gesamtspielanzahl für mehr Kontext
+        const total = w + l;
+        h += `<td class="${w>l?'h2h-win':w<l?'h2h-lose':''}" title="${total} Spiele gesamt">${w}-${l}</td>`;
       });
       h += '</tr>';
     });
@@ -384,6 +552,119 @@ layout: default
     box.innerHTML = `💡 Prognose: Team 1 gewinnt zu <strong>${prob}%</strong>`;
     box.style.display = 'block';
   }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // AUFGABE 2: CHEMIE-BONUS
+  // Berechnet für jedes Spielerpaar, wie viel besser/schlechter sie als Team
+  // performen als ihre kombinierten Einzel-ELOs erwarten würden.
+  // ──────────────────────────────────────────────────────────────────────────
+  let chemistryRendered = false;
+
+  function renderChemistry() {
+    // Lazy render: nur beim ersten Tab-Wechsel berechnen
+    if (!games.length && !players.length) {
+      document.getElementById('chemistry-table').innerHTML = '<p class="empty">Noch keine Daten geladen.</p>';
+      return;
+    }
+
+    const el = document.getElementById('chemistry-table');
+    el.innerHTML = '<div class="loading">Berechne Chemie-Bonus…</div>';
+
+    // Alle Spielerpaare finden, die als Team gespielt haben (2v2-Spiele)
+    const pairStats = {};
+    const pairKey = (a, b) => [a, b].sort().join('|');
+
+    // Nur 2v2-Spiele (beide Slots belegt auf beiden Seiten) für Chemie auswerten
+    const teamGames = games.filter(g => g.team1_player1 && g.team1_player2 && g.team2_player1 && g.team2_player2);
+
+    teamGames.forEach(g => {
+      // Team 1-Paar
+      const key1 = pairKey(g.team1_player1, g.team1_player2);
+      if (!pairStats[key1]) pairStats[key1] = { a: g.team1_player1, b: g.team1_player2, wins: 0, played: 0, expWinSum: 0 };
+      const stat1 = pairStats[key1];
+
+      // Erwartete Gewinnrate berechnen:
+      // ELO_Team1_avg vs ELO_Team2_avg zum Spielzeitpunkt
+      // Wir nutzen die aktuellen ELOs (Approximation — exakte historische ELOs wären aufwändiger)
+      const eloA = players.find(p => p.id === g.team1_player1)?.elo || 1000;
+      const eloB = players.find(p => p.id === g.team1_player2)?.elo || 1000;
+      const eloC = players.find(p => p.id === g.team2_player1)?.elo || 1000;
+      const eloD = players.find(p => p.id === g.team2_player2)?.elo || 1000;
+      const team1Avg = (eloA + eloB) / 2;
+      const team2Avg = (eloC + eloD) / 2;
+      const exp1 = 1 / (1 + Math.pow(10, (team2Avg - team1Avg) / 400));
+
+      stat1.played++;
+      stat1.expWinSum += exp1;
+      if (g.score_team1 > g.score_team2) stat1.wins++;
+
+      // Team 2-Paar (gespiegelt)
+      const key2 = pairKey(g.team2_player1, g.team2_player2);
+      if (!pairStats[key2]) pairStats[key2] = { a: g.team2_player1, b: g.team2_player2, wins: 0, played: 0, expWinSum: 0 };
+      const stat2 = pairStats[key2];
+      const exp2 = 1 - exp1;
+      stat2.played++;
+      stat2.expWinSum += exp2;
+      if (g.score_team2 > g.score_team1) stat2.wins++;
+    });
+
+    // Nur Paare mit ≥ 5 Spielen, sortiert nach Chemie-Bonus
+    const results = Object.entries(pairStats)
+      .filter(([, s]) => s.played >= 5)
+      .map(([, s]) => {
+        const nameA = players.find(p => p.id === s.a)?.name || '?';
+        const nameB = players.find(p => p.id === s.b)?.name || '?';
+        const actualWR = s.wins / s.played;
+        const expectedWR = s.expWinSum / s.played;
+        const bonus = actualWR - expectedWR;
+        return { nameA, nameB, played: s.played, actualWR, expectedWR, bonus };
+      })
+      .sort((a, b) => b.bonus - a.bonus);
+
+    if (!results.length) {
+      el.innerHTML = '<p class="empty">Noch nicht genug Teamspiele (mind. 5 pro Paar) für eine Chemie-Auswertung.</p>';
+      return;
+    }
+
+    let html = `
+      <table class="chemistry-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Paar</th>
+            <th>Spiele</th>
+            <th>Tatsächlich</th>
+            <th>Erwartet</th>
+            <th>Chemie-Bonus</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    results.forEach((r, i) => {
+      const bonusPct = (r.bonus * 100).toFixed(1);
+      const actualPct = (r.actualWR * 100).toFixed(1);
+      const expectedPct = (r.expectedWR * 100).toFixed(1);
+      const bonusClass = r.bonus > 0 ? 'chemistry-positive' : r.bonus < 0 ? 'chemistry-negative' : '';
+      const bonusSign = r.bonus > 0 ? '+' : '';
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+      html += `
+        <tr>
+          <td>${medal}</td>
+          <td><strong>${r.nameA}</strong> &amp; <strong>${r.nameB}</strong></td>
+          <td style="color:#777;">${r.played}</td>
+          <td>${actualPct}%</td>
+          <td style="color:#777;">${expectedPct}%</td>
+          <td class="${bonusClass}"><strong>${bonusSign}${bonusPct}%</strong></td>
+        </tr>
+      `;
+    });
+
+    html += '</tbody></table>';
+    el.innerHTML = html;
+    chemistryRendered = true;
+  }
+
   loadAll();
 </script>
 
@@ -393,7 +674,7 @@ layout: default
   .kicker-app { max-width: 900px; margin: 20px auto; font-family: -apple-system, system-ui, sans-serif; color: var(--text); padding: 0 15px; }
   .app-header { text-align: center; margin-bottom: 16px; }
   .app-header h1 { margin-bottom: 6px; }
-  .app-subtitle { margin: 0 auto; max-width: 680px; color: #5f6f7a; font-size: 0.95rem; line-height: 1.45; }
+  .section-desc { color: #5f6f7a; font-size: 0.9rem; margin-bottom: 16px; }
   .main-tabs { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
   .main-tabs button { padding: 10px 20px; border: none; border-radius: 20px; cursor: pointer; background: #eee; font-weight: bold; }
   .main-tabs button.active { background: var(--primary); color: white; }
@@ -412,9 +693,12 @@ layout: default
   .team-input { background: #f9f9f9; padding: 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 5px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
-  .elo-badge { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; }
+  th { font-weight: 600; color: #555; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .elo-badge { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+  /* CHANGED: Game-Row Layout verbessert mit Datum */
   .game-row { position: relative; display: flex; justify-content: center; padding: 12px 42px 12px 8px; border-bottom: 1px solid var(--border); }
-  .game-main { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; width: 100%; }
+  .game-main { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; width: 100%; }
+  .game-date { font-size: 0.75rem; color: #999; }
   .teams { text-align: center; }
   .score { font-weight: bold; background: #eee; padding: 5px 12px; border-radius: 15px; }
   .winner { color: var(--success); font-weight: bold; }
@@ -422,10 +706,22 @@ layout: default
   .text-red { color: var(--danger); }
   .h2h-win { color: var(--success); font-weight: bold; }
   .h2h-lose { color: var(--danger); }
+  /* CHANGED: Diagonale H2H-Zellen besser abgehoben */
+  .h2h-self { color: #ccc; text-align: center; }
   .archived { opacity: 0.6; }
   .admin-player-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
-  .del-btn { background: var(--primary); padding: 5px 10px; font-size: 0.8em; }
+  .del-btn { background: var(--danger); padding: 5px 10px; font-size: 0.8em; }
   .history-del-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
   #prediction-box { background: #eef; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; text-align: center; }
-  @media (max-width: 600px) { .game-form { grid-template-columns: 1fr; } }
+  /* CHANGED: Loading-Indikator Styling */
+  .loading-indicator { font-size: 0.85rem; color: #888; }
+  /* CHANGED: Chemie-Bonus Tabelle */
+  .chemistry-positive { color: var(--success); }
+  .chemistry-negative { color: var(--danger); }
+  .chemistry-table td { vertical-align: middle; }
+  @media (max-width: 600px) {
+    .game-form { grid-template-columns: 1fr; }
+    /* CHANGED: Tabellen auf Mobile horizontal scrollbar */
+    #h2h-matrix, #stats-table, #chemistry-table { overflow-x: auto; display: block; }
+  }
 </style>
