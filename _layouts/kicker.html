@@ -4,7 +4,7 @@ layout: default
 <div class="kicker-app">
   <header class="app-header">
     <h1>🏆 Kicker Liga Pro</h1>
-    <p class="app-subtitle">Aktuelle Saison live verwalten, archivierte Saisons im Filter abrufen und alle Ansichten konsistent neu laden.</p>
+    <p class="app-subtitle">Einfache Ansicht ohne Saisonwechsel.</p>
   </header>
   <nav class="main-tabs">
     <button onclick="switchTab('stats', this)" class="active">Stats</button>
@@ -29,9 +29,7 @@ layout: default
     <section>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
         <h2>Rangliste</h2>
-        <select id="season-filter" onchange="loadAll()" style="max-width:200px;">
-          <option value="current" selected>Aktuelle Saison</option>
-        </select>
+        <span style="font-size:0.9em; color:#5f6f7a;">Alle Spiele</span>
       </div>
       <div id="stats-table"><div class="loading">Lädt...</div></div>
     </section>
@@ -92,13 +90,6 @@ layout: default
         <input type="text" id="playerName" placeholder="Neuer Spieler Name">
         <button onclick="addPlayer()">Hinzufügen</button>
       </div>
-      <hr style="margin:25px 0; border:0; border-top:1px solid #eee;">
-      <h3>Saison archivieren</h3>
-      <p style="font-size:0.9em; color:#666; margin-bottom:10px;">Archiviert die aktuelle Saison, setzt die Live-Werte zurück und lässt vergangene Saisons im Filter abrufbar.</p>
-      <div class="input-group">
-        <input type="text" id="seasonName" placeholder="Saison Name (z.B. Frühling 2026)">
-        <button class="danger-btn" onclick="resetSeason()">Archivieren & Reset</button>
-      </div>
     </section>
   </div>
 </div>
@@ -107,7 +98,7 @@ layout: default
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   const sb = supabase.createClient('https://qqoxwxomidrdkwhwndcg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo');
-  let role = null, players = [], games = [], seasons = [], charts = {};
+  let role = null, players = [], games = [], charts = {};
 
   function renderCharts() {
     renderEloChart();
@@ -141,18 +132,9 @@ layout: default
   }
 
   async function loadAll() {
-    const sFilterEl = document.getElementById('season-filter');
-    let sFilter = sFilterEl ? sFilterEl.value : 'current';
-    const { data: sData } = await sb.from('seasons').select('*').order('created_at', { ascending: false });
-    seasons = sData || [];
     const { data: pData } = await sb.from('players').select('*').order('elo', { ascending: false });
     players = pData || [];
-    let gameQuery = sb.from('games').select('*').order('played_at', { ascending: true });
-    if (sFilter === 'current') {
-      gameQuery = gameQuery.eq('archived', false);
-    } else if (sFilter) {
-      gameQuery = gameQuery.eq('season_id', sFilter);
-    }
+    const gameQuery = sb.from('games').select('*').order('played_at', { ascending: true });
     const { data: gData } = await gameQuery;
     games = gData || [];
     updateDropdowns();
@@ -163,14 +145,6 @@ layout: default
   }
 
   function updateDropdowns() {
-    const sFilter = document.getElementById('season-filter');
-    if (sFilter) {
-      const curS = sFilter.value || 'current';
-      let sHtml = '<option value="current">Aktuelle Saison</option><option value="">Alle Spiele</option>';
-      seasons.forEach(s => { sHtml += `<option value="${s.id}">${s.name}</option>`; });
-      sFilter.innerHTML = sHtml;
-      sFilter.value = curS;
-    }
     const pOpts = '<option value="">- Spieler -</option>' + players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
     ['t1p1', 't1p2', 't2p1', 't2p2'].forEach(id => {
       const el = document.getElementById(id);
@@ -227,19 +201,6 @@ layout: default
     await Promise.all(updates);
   }
 
-  async function resetSeason() {
-    const name = document.getElementById('seasonName').value.trim();
-    if (!name) return alert('Bitte Saisonnamen angeben!');
-    if (!confirm(`Saison '${name}' archivieren? Alle Elos werden auf 1000 zurückgesetzt.`)) return;
-    const { data: newS, error: sErr } = await sb.from('seasons').insert([{ name }]).select().single();
-    if (sErr) return alert('Fehler: ' + sErr.message);
-    await sb.from('games').update({ archived: true, season_id: newS.id }).eq('archived', false);
-    await sb.from('players').update({ elo: 1000 });
-    document.getElementById('seasonName').value = '';
-    await loadAll();
-    alert('Saison archiviert & Reset durchgeführt!');
-  }
-
   function renderStats() {
     const el = document.getElementById('stats-table');
     if (!players.length) { el.innerHTML = '<p class="empty">Keine Spieler.</p>'; return; }
@@ -271,10 +232,12 @@ layout: default
     el.innerHTML = games.slice().reverse().map(g => {
       const win = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
       return `<div class="game-row ${g.archived ? 'archived' : ''}">
-        <span class="teams ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
-        <span class="score">${g.score_team1} : ${g.score_team2}</span>
-        <span class="teams ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
-        ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn">✕</button>` : ''}
+        <div class="game-main">
+          <span class="teams ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
+          <span class="score">${g.score_team1} : ${g.score_team2}</span>
+          <span class="teams ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
+        </div>
+        ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn history-del-btn">✕</button>` : ''}
       </div>`;
     }).join('') || '<p class="empty">Keine Spiele.</p>';
   }
@@ -417,7 +380,9 @@ layout: default
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
   .elo-badge { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; }
-  .game-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .game-row { position: relative; display: flex; justify-content: center; padding: 12px 42px 12px 8px; border-bottom: 1px solid var(--border); }
+  .game-main { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; width: 100%; }
+  .teams { text-align: center; }
   .score { font-weight: bold; background: #eee; padding: 5px 12px; border-radius: 15px; }
   .winner { color: var(--success); font-weight: bold; }
   .text-green { color: var(--success); }
@@ -427,6 +392,7 @@ layout: default
   .archived { opacity: 0.6; }
   .admin-player-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
   .del-btn { background: var(--primary); padding: 5px 10px; font-size: 0.8em; }
+  .history-del-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
   #prediction-box { background: #eef; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; text-align: center; }
   @media (max-width: 600px) { .game-form { grid-template-columns: 1fr; } }
 </style>
