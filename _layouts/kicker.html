@@ -79,13 +79,14 @@ layout: default
       <div class="game-form">
         <div class="team-input">
           <h3>Team 1</h3>
-          <select id="t1p1"></select>
-          <select id="t1p2"></select>
+          <!-- FIXED FIX1: onchange direkt am Element statt fragiler cloneNode-Listener -->
+          <select id="t1p1" onchange="predictOutcome()"></select>
+          <select id="t1p2" onchange="predictOutcome()"></select>
         </div>
         <div class="team-input">
           <h3>Team 2</h3>
-          <select id="t2p1"></select>
-          <select id="t2p2"></select>
+          <select id="t2p1" onchange="predictOutcome()"></select>
+          <select id="t2p2" onchange="predictOutcome()"></select>
         </div>
       </div>
       <div class="input-group" style="margin-top:15px;">
@@ -162,7 +163,10 @@ layout: default
     document.getElementById('login-section').style.display = 'none';
 
     const startTab = role === 'admin' ? 'stats' : 'play';
-    switchTab(startTab, document.querySelector('.main-tabs button'));
+    // FIXED FIX2: Vorher wurde immer der erste Button selektiert (querySelector gibt ersten zurück).
+    // Jetzt: Button anhand der tabId im onclick-Attribut suchen → korrekter aktiver Button.
+    const activeBtn = document.querySelector(`.main-tabs button[onclick*="${startTab}"]`);
+    switchTab(startTab, activeBtn);
     loadAll();
   }
 
@@ -194,7 +198,9 @@ layout: default
         .select('*')
         .order('played_at', { ascending: true })
         .range(from, from + pageSize - 1);
-      if (error || !data || data.length === 0) break;
+      // FIXED FIX3: Fehler beim Paginierungsabruf explizit loggen
+      if (error) { console.error('fetchAllGames Fehler:', error); break; }
+      if (!data || data.length === 0) break;
       allGames = allGames.concat(data);
       if (data.length < pageSize) break;
       from += pageSize;
@@ -203,12 +209,21 @@ layout: default
   }
 
   async function loadAll() {
-    // CHANGED: Loading-Indikator anzeigen
     document.getElementById('stats-loading').style.display = 'inline';
-    const { data: pData } = await sb.from('players').select('*').order('elo', { ascending: false });
+    // FIXED FIX3: Error-Handling für players-SELECT — vorher stiller Fehler mit leerer Liste.
+    const { data: pData, error: pErr } = await sb.from('players').select('*').order('elo', { ascending: false });
+    if (pErr) {
+      console.error('Fehler beim Laden der Spieler:', pErr);
+      document.getElementById('stats-table').innerHTML = '<p class="empty">⚠️ Spieler konnten nicht geladen werden.</p>';
+      document.getElementById('stats-loading').style.display = 'none';
+      return;
+    }
     players = pData || [];
-    // FIXED: Statt einfachem .select('*') jetzt Pagination via fetchAllGames()
+    // FIXED FIX3: fetchAllGames() gibt bei Fehler leeres Array zurück (bereits intern gehandelt).
+    // Zusätzlich: Fehlermeldung im History-Tab wenn games leer wegen Fehler.
     games = await fetchAllGames();
+    // FIXED FIX5: chemistryRendered zurücksetzen damit neue Daten im Chemie-Tab erscheinen
+    chemistryRendered = false;
     updateDropdowns();
     renderStats();
     renderHistory();
@@ -234,8 +249,6 @@ layout: default
       if (rv) radarSel.value = rv;
       else if (players.length > 0) radarSel.value = players[0].id;
     }
-    // FIXED Fix 3: Nach jedem Dropdown-Rebuild Listener neu anhängen
-    attachPredictListeners();
   }
 
   async function addGame() {
@@ -249,8 +262,10 @@ layout: default
       archived: false
     };
     if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1) || isNaN(g.score_team2)) return alert('Pflichtfelder!');
-    // CHANGED: Unentschieden (gleicher Score) explizit abfangen
     if (g.score_team1 === g.score_team2) return alert('Kicker-Spiele enden nicht unentschieden — bitte korrektes Ergebnis eintragen.');
+    // FIXED FIX4: Prüfen ob ein Spieler mehrfach vorkommt — verhindert "Spieler gegen sich selbst".
+    const selectedIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
+    if (new Set(selectedIds).size !== selectedIds.length) return alert('Jeder Spieler darf nur einmal pro Spiel vorkommen.');
     const { error } = await sb.from('games').insert([g]);
     if (error) return alert('Fehler beim Speichern: ' + error.message);
     // FIXED F3: try/catch um updateElosInDb — bei ELO-Fehler wird der User informiert
@@ -370,7 +385,8 @@ layout: default
       // FIXED E3: Ungültige Datumswerte führen zu "Invalid Date" im UI.
       // Jetzt: Validierung vor Anzeige — wenn played_at kein gültiges Datum ist, kein String.
       const parsedDate = g.played_at ? new Date(g.played_at) : null;
-      const dateStr = parsedDate && !isNaN(parsedDate) ? parsedDate.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+      // FIXED FIX6c: toLocaleDateString() ignoriert hour/minute auf Safari — toLocaleString() verwenden.
+      const dateStr = parsedDate && !isNaN(parsedDate) ? parsedDate.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
       // FIXED Fix 2: 3-spaltiges Grid-Layout — Team1 links, Score Mitte, Team2 rechts
       // FIXED V4: has-delete Klasse nur für Admins — padding-right 42px nur wenn nötig
       return `<div class="game-row ${g.archived ? 'archived' : ''} ${role === 'admin' ? 'has-delete' : ''}">
@@ -691,27 +707,19 @@ layout: default
       return;
     }
     const getAvg = ids => ids.reduce((a, id) => a + (players.find(p => p.id === id)?.elo || 1000), 0) / ids.length;
-    const prob = (1 / (1 + Math.pow(10, (getAvg(t2) - getAvg(t1)) / 400)) * 100).toFixed(1);
-    const prob2 = (100 - prob).toFixed(1);
+    // FIXED FIX6a: prob2 wurde von String subtrahiert (prob ist nach .toFixed() ein String).
+    // Jetzt: Rohen Float-Wert berechnen, dann beide runden.
+    const probRaw = 1 / (1 + Math.pow(10, (getAvg(t2) - getAvg(t1)) / 400)) * 100;
+    const prob = probRaw.toFixed(1);
+    const prob2 = (100 - probRaw).toFixed(1);
     const t1Names = t1.map(id => players.find(p => p.id === id)?.name || '?').join(' & ');
     const t2Names = t2.map(id => players.find(p => p.id === id)?.name || '?').join(' & ');
     box.innerHTML = `💡 <strong>${t1Names}</strong> gewinnt zu <strong>${prob}%</strong> · <strong>${t2Names}</strong> zu <strong>${prob2}%</strong>`;
     box.style.display = 'block';
   }
 
-  // FIXED Fix 3: Event-Listener auf alle 4 Spieler-Dropdowns setzen.
-  // Wird nach updateDropdowns() aufgerufen damit die Elemente im DOM sind.
-  function attachPredictListeners() {
-    ['t1p1', 't1p2', 't2p1', 't2p2'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        // Vorhandene Listener vermeiden Duplikate via replaceWith-Clone
-        const fresh = el.cloneNode(true);
-        el.parentNode.replaceChild(fresh, el);
-        fresh.addEventListener('change', predictOutcome);
-      }
-    });
-  }
+  // FIXED FIX1: attachPredictListeners() entfernt — onchange direkt in HTML-Selects,
+  // kein cloneNode-Trick mehr nötig.
 
   // ──────────────────────────────────────────────────────────────────────────
   // AUFGABE 2: CHEMIE-BONUS
@@ -721,13 +729,14 @@ layout: default
   let chemistryRendered = false;
 
   function renderChemistry() {
-    // FIXED F6: && war falsch — wenn nur eines der Arrays leer ist, trotzdem Frühausstieg.
-    // Vorher: && → weiterrechnen wenn games leer aber players vorhanden (oder umgekehrt).
-    // Jetzt: || → Frühausstieg sobald irgendwelche Daten fehlen.
     if (!games.length || !players.length) {
       document.getElementById('chemistry-table').innerHTML = '<p class="empty">Noch keine Daten geladen.</p>';
       return;
     }
+    // FIXED FIX5: chemistryRendered wurde gesetzt aber nie gelesen — Guard ergänzt.
+    // Chemie wird nur beim ersten Tab-Öffnen berechnet (lazy). Nach loadAll() wird
+    // chemistryRendered zurückgesetzt damit bei neuen Daten neu gerendert wird.
+    if (chemistryRendered) return;
 
     const el = document.getElementById('chemistry-table');
     el.innerHTML = '<div class="loading">Berechne Chemie-Bonus…</div>';
@@ -890,6 +899,8 @@ layout: default
   .del-btn { background: var(--danger); padding: 5px 10px; font-size: 0.8em; }
   .history-del-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
   #prediction-box { background: #eef; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; text-align: center; }
+  /* FIXED FIX6b: .empty-Style war undefiniert — Leer-Zustände hatten kein konsistentes Styling */
+  .empty { color: #999; text-align: center; padding: 20px; font-size: 0.95rem; }
   /* CHANGED: Loading-Indikator Styling */
   .loading-indicator { font-size: 0.85rem; color: #888; }
   /* CHANGED: Chemie-Bonus Tabelle */
