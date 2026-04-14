@@ -89,8 +89,9 @@ layout: default
         </div>
       </div>
       <div class="input-group" style="margin-top:15px;">
-        <input type="number" id="s1" placeholder="Tore Team 1" min="0" oninput="predictOutcome()">
-        <input type="number" id="s2" placeholder="Tore Team 2" min="0" oninput="predictOutcome()">
+        <!-- FIXED Fix 3: Torfelder triggern keine Prognose mehr — Prognose hängt nur von Spielerauswahl ab -->
+        <input type="number" id="s1" placeholder="Tore Team 1" min="0">
+        <input type="number" id="s2" placeholder="Tore Team 2" min="0">
       </div>
       <div id="prediction-box"></div>
       <button class="submit-btn" onclick="addGame()">Spiel speichern</button>
@@ -228,6 +229,8 @@ layout: default
       if (rv) radarSel.value = rv;
       else if (players.length > 0) radarSel.value = players[0].id;
     }
+    // FIXED Fix 3: Nach jedem Dropdown-Rebuild Listener neu anhängen
+    attachPredictListeners();
   }
 
   async function addGame() {
@@ -349,11 +352,12 @@ layout: default
       const win = g.score_team1 > g.score_team2 ? 1 : (g.score_team2 > g.score_team1 ? 2 : 0);
       // CHANGED: Datum wird jetzt angezeigt wenn played_at vorhanden
       const dateStr = g.played_at ? new Date(g.played_at).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+      // FIXED Fix 2: 3-spaltiges Grid-Layout — Team1 links, Score Mitte, Team2 rechts
       return `<div class="game-row ${g.archived ? 'archived' : ''}">
         <div class="game-main">
-          <span class="teams ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
+          <span class="teams team1 ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
           <span class="score">${g.score_team1} : ${g.score_team2}</span>
-          <span class="teams ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
+          <span class="teams team2 ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
           ${dateStr ? `<span class="game-date">${dateStr}</span>` : ''}
         </div>
         ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn history-del-btn">✕</button>` : ''}
@@ -609,9 +613,8 @@ layout: default
     players.forEach(p1 => {
       h += `<tr><td><strong>${p1.name}</strong></td>`;
       players.forEach(p2 => {
-        // FIXED Bug 4: text-align:center wurde von th,td{text-align:left} überschrieben.
-        // Inline-style hat höhere Spezifität und überschreibt die globale Regel sicher.
-        if (p1.id === p2.id) { h += '<td class="h2h-self" style="text-align:center;vertical-align:middle;">—</td>'; return; }
+        // FIXED Fix 1: Diagonalzelle mit vollständigem inline style — überschreibt alle CSS-Regeln sicher.
+        if (p1.id === p2.id) { h += '<td class="h2h-self" style="text-align:center;vertical-align:middle;height:40px;line-height:40px;padding:0;color:#ccc;">—</td>'; return; }
         const vs = games.filter(g => {
           const t1 = [g.team1_player1, g.team1_player2], t2 = [g.team2_player1, g.team2_player2];
           return (t1.includes(p1.id) && t2.includes(p2.id)) || (t2.includes(p1.id) && t1.includes(p2.id));
@@ -631,15 +634,39 @@ layout: default
     document.getElementById('h2h-matrix').innerHTML = h + '</tbody></table>';
   }
 
+  // FIXED Fix 3: predictOutcome() wird jetzt von Spieler-Dropdowns getriggert, nicht von Torfeldern.
+  // Prognose erscheint sofort sobald mind. je 1 Spieler pro Team ausgewählt ist.
+  // Wenn ein Dropdown auf leer zurückgesetzt wird, verschwindet die Prognose wieder.
   function predictOutcome() {
     const t1 = [document.getElementById('t1p1').value, document.getElementById('t1p2').value].filter(Boolean);
     const t2 = [document.getElementById('t2p1').value, document.getElementById('t2p2').value].filter(Boolean);
-    if (t1.length < 1 || t2.length < 1) return;
+    const box = document.getElementById('prediction-box');
+    // Mindestens t1p1 und t2p1 müssen gesetzt sein (Pflichtfelder)
+    if (!document.getElementById('t1p1').value || !document.getElementById('t2p1').value) {
+      box.style.display = 'none';
+      return;
+    }
     const getAvg = ids => ids.reduce((a, id) => a + (players.find(p => p.id === id)?.elo || 1000), 0) / ids.length;
     const prob = (1 / (1 + Math.pow(10, (getAvg(t2) - getAvg(t1)) / 400)) * 100).toFixed(1);
-    const box = document.getElementById('prediction-box');
-    box.innerHTML = `💡 Prognose: Team 1 gewinnt zu <strong>${prob}%</strong>`;
+    const prob2 = (100 - prob).toFixed(1);
+    const t1Names = t1.map(id => players.find(p => p.id === id)?.name || '?').join(' & ');
+    const t2Names = t2.map(id => players.find(p => p.id === id)?.name || '?').join(' & ');
+    box.innerHTML = `💡 <strong>${t1Names}</strong> gewinnt zu <strong>${prob}%</strong> · <strong>${t2Names}</strong> zu <strong>${prob2}%</strong>`;
     box.style.display = 'block';
+  }
+
+  // FIXED Fix 3: Event-Listener auf alle 4 Spieler-Dropdowns setzen.
+  // Wird nach updateDropdowns() aufgerufen damit die Elemente im DOM sind.
+  function attachPredictListeners() {
+    ['t1p1', 't1p2', 't2p1', 't2p2'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        // Vorhandene Listener vermeiden Duplikate via replaceWith-Clone
+        const fresh = el.cloneNode(true);
+        el.parentNode.replaceChild(fresh, el);
+        fresh.addEventListener('change', predictOutcome);
+      }
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -781,15 +808,22 @@ layout: default
   .game-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
   .team-input { background: #f9f9f9; padding: 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 5px; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
+  th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); height: 40px; vertical-align: middle; }
+  /* FIXED Fix 1: H2H-Matrix alle Zellen zentriert — spezifischer Selektor überschreibt th,td */
+  #h2h-matrix table th, #h2h-matrix table td { text-align: center; vertical-align: middle; padding: 10px; height: 40px; }
   th { font-weight: 600; color: #555; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
   .elo-badge { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
   /* CHANGED: Game-Row Layout verbessert mit Datum */
   .game-row { position: relative; display: flex; justify-content: center; padding: 12px 42px 12px 8px; border-bottom: 1px solid var(--border); }
-  .game-main { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; width: 100%; }
-  .game-date { font-size: 0.75rem; color: #999; }
+  /* FIXED Fix 2: Spiele-Layout horizontal — Team A | Score | Team B */
+  .game-main { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; width: 100%; }
+  /* FIXED Fix 2: Datum-Zeile spannt alle 3 Spalten */
+  .game-date { font-size: 0.75rem; color: #999; grid-column: 1 / -1; text-align: center; }
   .teams { text-align: center; }
-  .score { font-weight: bold; background: #eee; padding: 5px 12px; border-radius: 15px; }
+  /* FIXED Fix 2: Team 1 links, Team 2 rechts ausrichten */
+  .game-main .team1 { text-align: left; }
+  .game-main .team2 { text-align: right; }
+  .score { font-weight: bold; background: #eee; padding: 5px 12px; border-radius: 15px; font-size: 1.1rem; white-space: nowrap; text-align: center; }
   .winner { color: var(--success); font-weight: bold; }
   .text-green { color: var(--success); }
   .text-red { color: var(--danger); }
