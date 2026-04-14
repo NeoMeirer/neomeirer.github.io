@@ -291,6 +291,54 @@ layout: default
     return gamesPlayed < 30 ? 32 : 16;
   }
 
+  // CHANGED: Gemeinsame ELO-Delta-Berechnung mit beiden Erweiterungen.
+  // Wird von updateElosInDb() und recalculateAllElos() aufgerufen —
+  // so ist die Formel nur einmal definiert und kann nicht auseinanderlaufen.
+  //
+  // Erweiterung 1 — Gewichtetes Delta nach Spielerstärke:
+  //   weightI  = eloI / sum(eloTeam)          → Anteil am Teamdurchschnitt
+  //   deltaI   = baseDelta * (2 * weightI)     → 2* damit deltaA+deltaB = 2*baseDelta
+  //   Bei 1v1 (ein Spieler pro Team): weight=1.0 → kein Effekt.
+  //
+  // Erweiterung 2 — Margin of Victory Multiplikator:
+  //   scoreDiff    = |s1 - s2|
+  //   maxGoals     = max(s1, s2)
+  //   marginFactor = min(1 + 0.5 * (scoreDiff / maxGoals), 1.5)
+  //   Cap bei 1.5 — verhindert übermäßige ELO-Schwankungen.
+  //   Fallback 1.0 wenn keine Tore (0:0 oder null).
+  //
+  // Kombinierte Formel:
+  //   finalDeltaI = K * (actual - expected) * marginFactor * (2 * weightI)
+  //
+  // Argumente:
+  //   K            – K-Faktor des Spielers
+  //   actual       – tatsächliches Ergebnis (1=Sieg, 0=Niederlage)
+  //   expected     – erwartete Gewinnwahrscheinlichkeit (ELO-Formel)
+  //   playerElo    – ELO des Spielers
+  //   teamEloSum   – Summe aller ELOs im selben Team (für Gewichtung)
+  //   score1       – Tore des eigenen Teams
+  //   score2       – Tore des gegnerischen Teams
+  function computeEloDelta(K, actual, expected, playerElo, teamEloSum, score1, score2) {
+    // Basis-Delta (ungewichtet, ohne Margin)
+    const baseDelta = K * (actual - expected);
+
+    // Erweiterung 2: Margin of Victory Multiplikator
+    const s1 = score1 || 0;
+    const s2 = score2 || 0;
+    const maxGoals = Math.max(s1, s2);
+    const marginFactor = maxGoals > 0
+      ? Math.min(1 + 0.5 * (Math.abs(s1 - s2) / maxGoals), 1.5)
+      : 1.0; // Fallback bei 0:0 oder fehlendem Score
+
+    // Erweiterung 1: Gewichtung nach Spielerstärke im Team
+    // teamEloSum = 0 sollte nicht vorkommen, aber Fallback weight=1 für 1v1
+    const weight = teamEloSum > 0 ? playerElo / teamEloSum : 1.0;
+
+    // Kombiniert: baseDelta * marginFactor * (2 * weight)
+    // Der Faktor 2 stellt sicher dass deltaA + deltaB = 2 * baseDelta (zero-sum im Team)
+    return baseDelta * marginFactor * (2 * weight);
+  }
+
   async function updateElosInDb(g) {
     const pIds = [g.team1_player1, g.team1_player2, g.team2_player1, g.team2_player2].filter(Boolean);
     // FIXED F4: error-Check beim Spieler-SELECT — bei Fehler frühzeitig abbrechen
@@ -314,19 +362,24 @@ layout: default
     const actual1 = g.score_team1 > g.score_team2 ? 1 : 0;
     const actual2 = 1 - actual1;
 
-    // FIXED: Jeder Spieler bekommt seinen eigenen K-Faktor basierend auf seinen gespielten Spielen
-    // Das Elo-Delta wird pro Spieler individuell berechnet, nicht als gemeinsames Team-Delta
+    // CHANGED: Delta-Berechnung via computeEloDelta() — enthält beide Erweiterungen:
+    // 1. Gewichtetes Delta nach Spielerstärke im Team
+    // 2. Margin of Victory Multiplikator (Torunterschied)
+    const t1EloSum = t1.reduce((s, id) => s + getPlayer(id).elo, 0);
+    const t2EloSum = t2.reduce((s, id) => s + getPlayer(id).elo, 0);
     const updates = [
       ...t1.map(id => {
         const pl = getPlayer(id);
         const K = getKFactor(pl.elo, pl.games_played || 0);
-        const newElo = Math.round(pl.elo + K * (actual1 - exp1));
+        const delta = computeEloDelta(K, actual1, exp1, pl.elo, t1EloSum, g.score_team1, g.score_team2);
+        const newElo = Math.round(pl.elo + delta);
         return sb.from('players').update({ elo: newElo, games_played: (pl.games_played || 0) + 1 }).eq('id', id);
       }),
       ...t2.map(id => {
         const pl = getPlayer(id);
         const K = getKFactor(pl.elo, pl.games_played || 0);
-        const newElo = Math.round(pl.elo + K * (actual2 - exp2));
+        const delta = computeEloDelta(K, actual2, exp2, pl.elo, t2EloSum, g.score_team2, g.score_team1);
+        const newElo = Math.round(pl.elo + delta);
         return sb.from('players').update({ elo: newElo, games_played: (pl.games_played || 0) + 1 }).eq('id', id);
       })
     ];
@@ -523,16 +576,22 @@ layout: default
       const actual1 = g.score_team1 > g.score_team2 ? 1 : 0;
       const actual2 = 1 - actual1;
 
+      // CHANGED: Delta-Berechnung via computeEloDelta() — identische Formel wie updateElosInDb().
+      // Beide Erweiterungen (Gewichtung + Margin) werden hier konsistent angewendet.
+      const t1EloSum = t1.reduce((s, id) => s + getElo(id), 0);
+      const t2EloSum = t2.reduce((s, id) => s + getElo(id), 0);
       t1.forEach(id => {
         const gp = gamesPlayedMap[id] || 0;
         const K = gp < 30 ? 32 : 16;
-        eloMap[id] = Math.round(getElo(id) + K * (actual1 - exp1));
+        const delta = computeEloDelta(K, actual1, exp1, getElo(id), t1EloSum, g.score_team1, g.score_team2);
+        eloMap[id] = Math.round(getElo(id) + delta);
         gamesPlayedMap[id] = gp + 1;
       });
       t2.forEach(id => {
         const gp = gamesPlayedMap[id] || 0;
         const K = gp < 30 ? 32 : 16;
-        eloMap[id] = Math.round(getElo(id) + K * (actual2 - exp2));
+        const delta = computeEloDelta(K, actual2, exp2, getElo(id), t2EloSum, g.score_team2, g.score_team1);
+        eloMap[id] = Math.round(getElo(id) + delta);
         gamesPlayedMap[id] = gp + 1;
       });
     });
