@@ -415,17 +415,99 @@ layout: default
     });
   }
 
+  // FIXED Bug 2: addPlayer() hatte kein Error-Handling — fehlgeschlagene INSERTs blieben
+  // stumm und die Liste wurde trotzdem neu geladen (ohne den neuen Spieler).
+  // Außerdem: games_played wird nur mitgeschickt wenn die Spalte existiert;
+  // bei Schema-Fehler wird es weggelassen und ein Fallback-INSERT versucht.
   async function addPlayer() {
     const name = document.getElementById('playerName').value.trim();
     if (!name) return;
-    // CHANGED: games_played mit 0 initialisieren für adaptiven K-Faktor
-    await sb.from('players').insert([{ name, elo: 1000, games_played: 0 }]);
+
+    // Versuch 1: Mit games_played (bevorzugt, für adaptiven K-Faktor)
+    let { error } = await sb.from('players').insert([{ name, elo: 1000, games_played: 0 }]);
+
+    // Versuch 2: Fallback ohne games_played falls Spalte nicht existiert
+    if (error && (error.code === '42703' || error.message?.includes('games_played'))) {
+      console.warn('FIXED Bug 2: games_played Spalte fehlt in DB, Fallback-INSERT ohne games_played');
+      const res = await sb.from('players').insert([{ name, elo: 1000 }]);
+      error = res.error;
+    }
+
+    if (error) {
+      // FIXED Bug 2: Fehler wird jetzt sichtbar geloggt und dem User angezeigt
+      console.error('addPlayer INSERT Fehler:', error);
+      alert('Fehler beim Hinzufügen: ' + (error.message || JSON.stringify(error)));
+      return;
+    }
+
+    console.log('addPlayer: Spieler "' + name + '" erfolgreich hinzugefügt');
     document.getElementById('playerName').value = '';
     loadAll();
   }
 
+  // FIXED Bug 1: Nach dem Löschen wird die ELO aller Spieler komplett neu berechnet.
+  // Vorher: loadAll() ohne ELO-Reset → ELOs bleiben falsch nach einem Lösch-Vorgang.
+  // Jetzt: deleteGame() → löscht Spiel → recalculateAllElos() → loadAll()
   async function deleteGame(id) {
-    if (confirm('Löschen?')) { await sb.from('games').delete().eq('id', id); loadAll(); }
+    if (!confirm('Spiel löschen? Die ELO aller Spieler wird danach neu berechnet.')) return;
+    const { error } = await sb.from('games').delete().eq('id', id);
+    if (error) { alert('Fehler beim Löschen: ' + error.message); return; }
+    await recalculateAllElos();
+    loadAll();
+  }
+
+  // FIXED Bug 1: Vollständige ELO-Neuberechnung auf Basis aller verbliebenen Spiele.
+  // Algorithmus:
+  //   1. Alle Spieler auf Start-ELO 1000 zurücksetzen (in-memory)
+  //   2. Alle Spiele chronologisch (played_at aufsteigend) durchlaufen
+  //   3. Nach jedem Spiel ELO wie in updateElosInDb() aktualisieren
+  //   4. Am Ende alle neuen ELOs in Supabase schreiben (bulk)
+  async function recalculateAllElos() {
+    // Aktuelle Spielerliste und alle verbleibenden Spiele holen
+    const { data: allPlayers } = await sb.from('players').select('id, name');
+    const remainingGames = await fetchAllGames();
+
+    // In-memory ELO-Map: alle Spieler starten bei 1000
+    const eloMap = {};
+    const gamesPlayedMap = {};
+    (allPlayers || []).forEach(p => {
+      eloMap[p.id] = 1000;
+      gamesPlayedMap[p.id] = 0;
+    });
+
+    // Chronologisch alle Spiele neu durchlaufen
+    remainingGames.forEach(g => {
+      const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
+      const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
+
+      const getElo = id => eloMap[id] ?? 1000;
+      const elo1avg = t1.reduce((s, id) => s + getElo(id), 0) / t1.length;
+      const elo2avg = t2.reduce((s, id) => s + getElo(id), 0) / t2.length;
+
+      const exp1 = 1 / (1 + Math.pow(10, (elo2avg - elo1avg) / 400));
+      const exp2 = 1 - exp1;
+      const actual1 = g.score_team1 > g.score_team2 ? 1 : 0;
+      const actual2 = 1 - actual1;
+
+      t1.forEach(id => {
+        const gp = gamesPlayedMap[id] || 0;
+        const K = gp < 30 ? 32 : 16;
+        eloMap[id] = Math.round(getElo(id) + K * (actual1 - exp1));
+        gamesPlayedMap[id] = gp + 1;
+      });
+      t2.forEach(id => {
+        const gp = gamesPlayedMap[id] || 0;
+        const K = gp < 30 ? 32 : 16;
+        eloMap[id] = Math.round(getElo(id) + K * (actual2 - exp2));
+        gamesPlayedMap[id] = gp + 1;
+      });
+    });
+
+    // Alle neuen ELOs parallel in Supabase schreiben
+    const updates = Object.entries(eloMap).map(([id, elo]) =>
+      sb.from('players').update({ elo, games_played: gamesPlayedMap[id] || 0 }).eq('id', id)
+    );
+    await Promise.all(updates);
   }
 
   async function deletePlayer(id) {
@@ -480,8 +562,11 @@ layout: default
       return {
         label: p.name,
         data: hist,
-        borderColor: `hsl(${i*45}, 70%, 50%)`,
-        backgroundColor: `hsla(${i*45}, 70%, 50%, 0.1)`,
+        // FIXED Bug 3: hsl(i*45) erzeugte sehr ähnliche Grüntöne bei benachbarten Spielern.
+        // Neue Palette: 8 klar unterscheidbare Farben, farbenblindoptimiert (kein Rot+Grün allein).
+        // Reihenfolge: Blau, Orange, Lila, Cyan, Pink, Dunkelgrün, Braun, Türkis
+        borderColor: ['#2563EB','#D97706','#7C3AED','#0891B2','#DB2777','#16A34A','#92400E','#0D9488'][i % 8],
+        backgroundColor: ['#2563EB','#D97706','#7C3AED','#0891B2','#DB2777','#16A34A','#92400E','#0D9488'].map(c => c + '22')[i % 8],
         fill: false,
         tension: 0.3,
         pointRadius: 3
@@ -522,7 +607,9 @@ layout: default
     players.forEach(p1 => {
       h += `<tr><td><strong>${p1.name}</strong></td>`;
       players.forEach(p2 => {
-        if (p1.id === p2.id) { h += '<td class="h2h-self">—</td>'; return; }
+        // FIXED Bug 4: text-align:center wurde von th,td{text-align:left} überschrieben.
+        // Inline-style hat höhere Spezifität und überschreibt die globale Regel sicher.
+        if (p1.id === p2.id) { h += '<td class="h2h-self" style="text-align:center;vertical-align:middle;">—</td>'; return; }
         const vs = games.filter(g => {
           const t1 = [g.team1_player1, g.team1_player2], t2 = [g.team2_player1, g.team2_player2];
           return (t1.includes(p1.id) && t2.includes(p2.id)) || (t2.includes(p1.id) && t1.includes(p2.id));
