@@ -831,9 +831,10 @@ layout: default
     chemistryRendered = true;
   }
 
-  // FIXED F2: loadAll() wird nicht mehr beim Seitenstart aufgerufen.
-  // Vorher: loadAll() auf Zeile 784 → Supabase-Abfragen vor dem Login → stille Fehler.
-  // Jetzt: loadAll() wird ausschließlich in login() und nach Mutationen aufgerufen.
+  // FIXED: loadAll() beim Start aufrufen damit Stats/Spiele/Charts ohne Login sichtbar sind.
+  // Nur Eintragen (play) und Admin benötigen Auth — public-read Tabs laden sofort.
+  // Supabase anon-Rolle hat SELECT-Rechte auf players/games (RLS korrekt gesetzt).
+  loadAll();
 </script>
 
 <style>
