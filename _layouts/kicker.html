@@ -144,6 +144,31 @@ layout: default
   // - All other authenticated users → role = 'player'
   // Passwords are stored securely in Supabase Auth, never in this code.
 
+  // NEW: Single source of truth for admin checks across the UI. Centralising this
+  // avoids drift between rendering paths (history row, archive list, archive detail,
+  // admin tab) and makes it trivial to extend later (e.g. multiple admin roles).
+  function isAdminUser() { return role === 'admin'; }
+
+  // NEW: Returns the current admin email (lower-cased) by consulting the live
+  // Supabase session, then verifies it against the admins table. Used to restore
+  // admin status on page load when Supabase has a persisted session.
+  async function resolveRoleFromSession() {
+    const { data: sess } = await sb.auth.getSession();
+    const email = sess?.session?.user?.email;
+    if (!email) { role = null; return; }
+    const { data: adminRow } = await sb.from('admins').select('email').eq('email', email).maybeSingle();
+    role = adminRow ? 'admin' : 'player';
+  }
+
+  // NEW: Apply the UI side effects that depend on role. Used both by login() and
+  // by the page-load session restore so both paths produce the same UI state.
+  function applyRoleToUi() {
+    document.getElementById('admin-tab-btn').style.display = isAdminUser() ? 'inline-block' : 'none';
+    document.getElementById('play-tab-btn').style.display  = role ? 'inline-block' : 'none';
+    document.getElementById('logout-btn').style.display    = role ? 'inline-block' : 'none';
+    document.getElementById('login-section').style.display = role ? 'none' : 'block';
+  }
+
   function renderCharts() {
     renderEloChart();
     renderH2H();
@@ -179,12 +204,14 @@ layout: default
     const { data: adminRow } = await sb.from('admins').select('email').eq('email', email).maybeSingle();
     role = adminRow ? 'admin' : 'player';
 
-    if (role === 'admin') {
-      document.getElementById('admin-tab-btn').style.display = 'inline-block';
-    }
-    document.getElementById('play-tab-btn').style.display = 'inline-block';
-    document.getElementById('logout-btn').style.display = 'inline-block';
-    document.getElementById('login-section').style.display = 'none';
+    // CHANGED: Tab-Visibility und Login-Section über zentralen applyRoleToUi() statt manuelle DOM-Edits.
+    applyRoleToUi();
+
+    // CHANGED: Archiv-Cache sofort invalidieren — bevor await-Chain in loadAll() läuft.
+    // Vorher wurde archiveListLoaded erst spät in loadAll() zurückgesetzt; klickte der User
+    // direkt nach dem Login auf den Archiv-Tab, lieferte renderArchiveList() noch das
+    // Anon-HTML (ohne Admin-Buttons) aus dem Cache zurück. Synchroner Reset behebt das Race.
+    archiveListLoaded = false;
 
     const startTab = role === 'admin' ? 'stats' : 'play';
     // FIXED FIX2: Vorher wurde immer der erste Button selektiert (querySelector gibt ersten zurück).
@@ -192,6 +219,13 @@ layout: default
     const activeBtn = document.querySelector(`.main-tabs button[onclick*="${startTab}"]`);
     switchTab(startTab, activeBtn);
     loadAll();
+
+    // NEW: Falls der Archiv-Tab beim Login bereits sichtbar ist (z.B. User hatte Archiv
+    // offen, hat sich dann angemeldet), erzwinge ein Re-Render damit die Admin-Buttons
+    // sofort erscheinen — ohne Tab-Wechsel-Workaround.
+    if (document.getElementById('tab-archive')?.classList.contains('active')) {
+      renderArchiveList();
+    }
   }
 
   // FIXED: Nach Logout UI-Tabs zurücksetzen und Daten neu laden (anon-Lesezugriff bleibt).
@@ -200,14 +234,18 @@ layout: default
   async function logout() {
     await sb.auth.signOut();
     role = null;
-    document.getElementById('admin-tab-btn').style.display = 'none';
-    document.getElementById('play-tab-btn').style.display = 'none';
-    document.getElementById('logout-btn').style.display = 'none';
-    document.getElementById('login-section').style.display = 'block';
+    // CHANGED: Tab-/Login-Sichtbarkeit zentral via applyRoleToUi().
+    applyRoleToUi();
     document.getElementById('login-email').value = '';
     document.getElementById('login-pass').value = '';
+    // CHANGED: Archiv-Cache invalidieren, damit Admin-Buttons beim nächsten Render verschwinden.
+    archiveListLoaded = false;
     // Daten neu laden (als anon) damit Stats/Charts weiterhin sichtbar sind
     loadAll();
+    // NEW: Falls Archiv-Tab gerade aktiv ist, sofort neu rendern (ohne Admin-Buttons).
+    if (document.getElementById('tab-archive')?.classList.contains('active')) {
+      renderArchiveList();
+    }
   }
 
   // FIXED: Pagination hinzugefügt — Supabase gibt standardmäßig nur 1000 Zeilen zurück.
@@ -545,14 +583,16 @@ layout: default
       const dateStr = parsedDate && !isNaN(parsedDate) ? parsedDate.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
       // FIXED Fix 2: 3-spaltiges Grid-Layout — Team1 links, Score Mitte, Team2 rechts
       // FIXED V4: has-delete Klasse nur für Admins — padding-right 42px nur wenn nötig
-      return `<div class="game-row ${g.archived ? 'archived' : ''} ${role === 'admin' ? 'has-delete' : ''}">
+      // CHANGED: zentralen isAdminUser()-Check statt direkter role-Vergleich.
+      const admin = isAdminUser();
+      return `<div class="game-row ${g.archived ? 'archived' : ''} ${admin ? 'has-delete' : ''}">
         <div class="game-main">
           <span class="teams team1 ${win === 1 ? 'winner' : ''}">${[gn(g.team1_player1), gn(g.team1_player2)].filter(n=>n!='?').join(' & ')}</span>
           <span class="score">${g.score_team1} : ${g.score_team2}</span>
           <span class="teams team2 ${win === 2 ? 'winner' : ''}">${[gn(g.team2_player1), gn(g.team2_player2)].filter(n=>n!='?').join(' & ')}</span>
           ${dateStr ? `<span class="game-date">${dateStr}</span>` : ''}
         </div>
-        ${role==='admin' ? `<button onclick="deleteGame('${g.id}')" class="del-btn history-del-btn">✕</button>` : ''}
+        ${admin ? `<button onclick="deleteGame('${g.id}')" class="del-btn history-del-btn">✕</button>` : ''}
       </div>`;
     }).join('') || '<p class="empty">Keine Spiele.</p>';
   }
@@ -1149,19 +1189,25 @@ layout: default
       return { ...s, gameCount: count ?? 0 };
     }));
 
-    // CHANGED: Admin-only Rename/Delete-Buttons pro Archiv-Eintrag.
+    // CHANGED: Admin-only Rename/Delete-Buttons pro Archiv-Eintrag — Quelle der Wahrheit
+    // ist nun isAdminUser() (zentraler Helper) statt direkter Vergleich auf role.
     // Buttons rufen stopPropagation auf, damit der Row-onclick (Detailanzeige) nicht feuert.
+    const showAdminControls = isAdminUser();
     listEl.innerHTML = rows.map(s => {
       const ended = s.ended_at ? new Date(s.ended_at).toLocaleDateString('de-DE') : '—';
       // NEW: Name als JSON escapen, damit Anführungszeichen/Sonderzeichen die onclick-Strings nicht brechen.
       const nameJson = JSON.stringify(s.name);
-      const adminControls = role === 'admin'
+      // CHANGED: aktive Saison als Sicherheitsnetz nicht löschbar (Button wird ausgeblendet,
+      // serverseitig schützt deleteArchivedSeason zusätzlich). renderArchiveList filtert
+      // bereits is_active=false, aber doppelter Schutz schadet nicht.
+      const isActiveSeason = s.id === currentSeasonId;
+      const adminControls = showAdminControls
         ? `<span class="archive-admin-controls">
              <button class="archive-edit-btn" onclick="event.stopPropagation(); renameArchivedSeason(${JSON.stringify(s.id)}, ${nameJson})" title="Saison umbenennen">✎</button>
-             <button class="del-btn archive-del-btn" onclick="event.stopPropagation(); deleteArchivedSeason(${JSON.stringify(s.id)}, ${nameJson})" title="Saison löschen">✕</button>
+             ${isActiveSeason ? '' : `<button class="del-btn archive-del-btn" onclick="event.stopPropagation(); deleteArchivedSeason(${JSON.stringify(s.id)}, ${nameJson})" title="Saison löschen">✕</button>`}
            </span>`
         : '';
-      return `<div class="archive-row" onclick="showArchiveSeason(${JSON.stringify(s.id)})">
+      return `<div class="archive-row${showAdminControls ? ' is-admin' : ''}" onclick="showArchiveSeason(${JSON.stringify(s.id)})">
         <span class="archive-name"><strong>${s.name}</strong></span>
         <span class="archive-date">📅 ${ended}</span>
         <span class="archive-games">🎮 ${s.gameCount} Spiele</span>
@@ -1175,7 +1221,8 @@ layout: default
   // Aktualisiert nur seasons.name; greift nicht in games oder snapshots ein.
   // Leerer Name wird abgewiesen.
   async function renameArchivedSeason(seasonId, currentName) {
-    if (role !== 'admin') return alert('Nur Admins können Saisons umbenennen.');
+    // CHANGED: zentralen isAdminUser()-Check statt direkter role-Vergleich.
+    if (!isAdminUser()) return alert('Nur Admins können Saisons umbenennen.');
     const newName = prompt('Neuer Name für archivierte Saison:', currentName || '');
     if (newName === null) return; // Abbruch durch User
     const trimmed = newName.trim();
@@ -1203,7 +1250,8 @@ layout: default
   //      FK-Verletzungen beim Löschen der Saison und bewahrt Spielhistorie.
   //   3. Saison selbst löschen.
   async function deleteArchivedSeason(seasonId, seasonName) {
-    if (role !== 'admin') return alert('Nur Admins können Saisons löschen.');
+    // CHANGED: zentralen isAdminUser()-Check statt direkter role-Vergleich.
+    if (!isAdminUser()) return alert('Nur Admins können Saisons löschen.');
     if (seasonId === currentSeasonId) {
       alert('Die aktive Saison kann nicht aus dem Archiv gelöscht werden.');
       return;
@@ -1271,10 +1319,19 @@ layout: default
     detailEl.innerHTML = html;
   }
 
-  // FIXED: loadAll() beim Start aufrufen damit Stats/Spiele/Charts ohne Login sichtbar sind.
-  // Nur Eintragen (play) und Admin benötigen Auth — public-read Tabs laden sofort.
-  // Supabase anon-Rolle hat SELECT-Rechte auf players/games (RLS korrekt gesetzt).
-  loadAll();
+  // CHANGED: Bootstrap stellt die Supabase-Session wieder her, bevor loadAll() läuft.
+  // Vorher: Bei Reload mit aktiver Session blieb role=null → Admin-Buttons (auch im Archiv)
+  // erschienen erst nach explizitem Login. Jetzt: Session aus Supabase holen, Rolle anhand
+  // der admins-Tabelle bestimmen, UI-Sichtbarkeit anwenden, dann Daten laden. So sind die
+  // Admin-Controls direkt nach Reload korrekt sichtbar bzw. ausgeblendet.
+  (async () => {
+    await resolveRoleFromSession();
+    applyRoleToUi();
+    await loadAll();
+    // NEW: Falls Archiv-Tab nach Bootstrap aktiv ist (Default ist Stats, aber sicherheitshalber),
+    // Admin-Controls sind dann bereits beim ersten Render in renderArchiveList sichtbar, da role
+    // gesetzt ist, bevor der User auf den Tab klickt.
+  })();
 </script>
 
 <style>
@@ -1359,8 +1416,10 @@ layout: default
   .mvp-line { background: #fff8e1; padding: 10px; border-radius: 8px; border-left: 4px solid #f1c40f; }
   #admin-season-controls { margin-top: 20px; }
   /* NEW: Admin-Controls in Archiv-Zeilen — kompakt rechts, verhindern aber nicht den Row-Klick */
-  .archive-admin-controls { display: inline-flex; gap: 6px; }
+  .archive-admin-controls { display: inline-flex; gap: 6px; margin-left: auto; }
   .archive-edit-btn { background: #95a5a6; padding: 5px 10px; font-size: 0.8em; }
   .archive-edit-btn:hover { background: #7f8c8d; }
   .archive-del-btn { padding: 5px 10px; font-size: 0.8em; }
+  /* NEW: Dezenter visueller Hinweis, dass die Zeile Admin-Controls trägt — feiner Border-Akzent rechts. */
+  .archive-row.is-admin { border-right: 3px solid var(--primary); }
 </style>
