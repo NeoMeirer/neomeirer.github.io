@@ -1191,30 +1191,74 @@ layout: default
 
     // CHANGED: Admin-only Rename/Delete-Buttons pro Archiv-Eintrag — Quelle der Wahrheit
     // ist nun isAdminUser() (zentraler Helper) statt direkter Vergleich auf role.
-    // Buttons rufen stopPropagation auf, damit der Row-onclick (Detailanzeige) nicht feuert.
+    // CHANGED: Statt fragiler Inline-onclick-Handler mit JSON.stringify (das doppelte
+    // Anführungszeichen produziert und die HTML-Attribute zerschoss → Buttons waren
+    // sichtbar, aber nicht klickbar, weil das Markup nach dem ersten `"` abbrach)
+    // verwenden wir nun data-Attribute + delegierten Event-Listener am Container.
+    // Das ist robust gegen Sonderzeichen in Namen/IDs und vermeidet das Quote-Escaping
+    // komplett.
     const showAdminControls = isAdminUser();
     listEl.innerHTML = rows.map(s => {
       const ended = s.ended_at ? new Date(s.ended_at).toLocaleDateString('de-DE') : '—';
-      // NEW: Name als JSON escapen, damit Anführungszeichen/Sonderzeichen die onclick-Strings nicht brechen.
-      const nameJson = JSON.stringify(s.name);
+      // NEW: HTML-Attribute mit escapeAttr(), damit IDs/Namen mit `"` oder `&` das Markup nicht brechen.
+      const idAttr = escapeAttr(String(s.id));
+      const nameAttr = escapeAttr(String(s.name ?? ''));
+      const nameHtml = escapeHtml(String(s.name ?? ''));
       // CHANGED: aktive Saison als Sicherheitsnetz nicht löschbar (Button wird ausgeblendet,
-      // serverseitig schützt deleteArchivedSeason zusätzlich). renderArchiveList filtert
-      // bereits is_active=false, aber doppelter Schutz schadet nicht.
+      // serverseitig schützt deleteArchivedSeason zusätzlich).
       const isActiveSeason = s.id === currentSeasonId;
       const adminControls = showAdminControls
         ? `<span class="archive-admin-controls">
-             <button class="archive-edit-btn" onclick="event.stopPropagation(); renameArchivedSeason(${JSON.stringify(s.id)}, ${nameJson})" title="Saison umbenennen">✎</button>
-             ${isActiveSeason ? '' : `<button class="del-btn archive-del-btn" onclick="event.stopPropagation(); deleteArchivedSeason(${JSON.stringify(s.id)}, ${nameJson})" title="Saison löschen">✕</button>`}
+             <button type="button" class="archive-edit-btn" data-action="rename" data-season-id="${idAttr}" data-season-name="${nameAttr}" title="Saison umbenennen">✎</button>
+             ${isActiveSeason ? '' : `<button type="button" class="del-btn archive-del-btn" data-action="delete" data-season-id="${idAttr}" data-season-name="${nameAttr}" title="Saison löschen">✕</button>`}
            </span>`
         : '';
-      return `<div class="archive-row${showAdminControls ? ' is-admin' : ''}" onclick="showArchiveSeason(${JSON.stringify(s.id)})">
-        <span class="archive-name"><strong>${s.name}</strong></span>
+      return `<div class="archive-row${showAdminControls ? ' is-admin' : ''}" data-action="open" data-season-id="${idAttr}">
+        <span class="archive-name"><strong>${nameHtml}</strong></span>
         <span class="archive-date">📅 ${ended}</span>
         <span class="archive-games">🎮 ${s.gameCount} Spiele</span>
         ${adminControls}
       </div>`;
     }).join('');
+    // NEW: Delegierter Listener am Container. Buttons mit data-action stoppen die
+    // Propagation, damit der Row-Open-Handler nicht zusätzlich feuert. Vorher per
+    // Inline-onclick — das brach durch unescaped Quotes und ließ die Buttons tot wirken.
+    if (!listEl.dataset.delegated) {
+      listEl.addEventListener('click', onArchiveListClick);
+      listEl.dataset.delegated = '1';
+    }
     archiveListLoaded = true;
+  }
+
+  // NEW: Zentraler Click-Handler für die Archiv-Liste (delegated). Nutzt closest()
+  // damit Klicks auf Kind-Elemente (z.B. <strong> im Namen) korrekt der Row zugeordnet
+  // werden.
+  function onArchiveListClick(ev) {
+    const btn = ev.target.closest('button[data-action]');
+    if (btn) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      const id = btn.getAttribute('data-season-id');
+      const name = btn.getAttribute('data-season-name') || '';
+      if (btn.dataset.action === 'rename') return renameArchivedSeason(id, name);
+      if (btn.dataset.action === 'delete') return deleteArchivedSeason(id, name);
+      return;
+    }
+    const row = ev.target.closest('.archive-row[data-action="open"]');
+    if (row) {
+      const id = row.getAttribute('data-season-id');
+      if (id) showArchiveSeason(id);
+    }
+  }
+
+  // NEW: Minimal-Escapes für HTML-Text und Attribut-Werte. Reicht für das hier verwendete
+  // Markup (Saisonnamen aus Supabase). Kein Framework, kein DOMPurify — nur die nötigsten
+  // Ersetzungen, damit Sonderzeichen das Markup nicht zerschießen.
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
+  }
+  function escapeAttr(str) {
+    return str.replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   }
 
   // NEW: Admin-Rename einer archivierten Saison.
@@ -1416,7 +1460,11 @@ layout: default
   .mvp-line { background: #fff8e1; padding: 10px; border-radius: 8px; border-left: 4px solid #f1c40f; }
   #admin-season-controls { margin-top: 20px; }
   /* NEW: Admin-Controls in Archiv-Zeilen — kompakt rechts, verhindern aber nicht den Row-Klick */
-  .archive-admin-controls { display: inline-flex; gap: 6px; margin-left: auto; }
+  /* CHANGED: pointer-events/z-index/position explizit, damit die Buttons garantiert klickbar sind
+     (Defense-in-depth — eigentlicher Bug war das gebrochene Markup, aber so verhindern wir,
+     dass spätere Layout-Änderungen die Buttons unter Pseudo-Elementen verstecken). */
+  .archive-admin-controls { display: inline-flex; gap: 6px; margin-left: auto; position: relative; z-index: 1; pointer-events: auto; }
+  .archive-edit-btn, .archive-del-btn { pointer-events: auto; position: relative; z-index: 1; cursor: pointer; }
   .archive-edit-btn { background: #95a5a6; padding: 5px 10px; font-size: 0.8em; }
   .archive-edit-btn:hover { background: #7f8c8d; }
   .archive-del-btn { padding: 5px 10px; font-size: 0.8em; }
