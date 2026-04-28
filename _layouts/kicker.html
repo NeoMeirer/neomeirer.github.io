@@ -1149,15 +1149,85 @@ layout: default
       return { ...s, gameCount: count ?? 0 };
     }));
 
+    // CHANGED: Admin-only Rename/Delete-Buttons pro Archiv-Eintrag.
+    // Buttons rufen stopPropagation auf, damit der Row-onclick (Detailanzeige) nicht feuert.
     listEl.innerHTML = rows.map(s => {
       const ended = s.ended_at ? new Date(s.ended_at).toLocaleDateString('de-DE') : '—';
+      // NEW: Name als JSON escapen, damit Anführungszeichen/Sonderzeichen die onclick-Strings nicht brechen.
+      const nameJson = JSON.stringify(s.name);
+      const adminControls = role === 'admin'
+        ? `<span class="archive-admin-controls">
+             <button class="archive-edit-btn" onclick="event.stopPropagation(); renameArchivedSeason(${JSON.stringify(s.id)}, ${nameJson})" title="Saison umbenennen">✎</button>
+             <button class="del-btn archive-del-btn" onclick="event.stopPropagation(); deleteArchivedSeason(${JSON.stringify(s.id)}, ${nameJson})" title="Saison löschen">✕</button>
+           </span>`
+        : '';
       return `<div class="archive-row" onclick="showArchiveSeason(${JSON.stringify(s.id)})">
         <span class="archive-name"><strong>${s.name}</strong></span>
         <span class="archive-date">📅 ${ended}</span>
         <span class="archive-games">🎮 ${s.gameCount} Spiele</span>
+        ${adminControls}
       </div>`;
     }).join('');
     archiveListLoaded = true;
+  }
+
+  // NEW: Admin-Rename einer archivierten Saison.
+  // Aktualisiert nur seasons.name; greift nicht in games oder snapshots ein.
+  // Leerer Name wird abgewiesen.
+  async function renameArchivedSeason(seasonId, currentName) {
+    if (role !== 'admin') return alert('Nur Admins können Saisons umbenennen.');
+    const newName = prompt('Neuer Name für archivierte Saison:', currentName || '');
+    if (newName === null) return; // Abbruch durch User
+    const trimmed = newName.trim();
+    if (!trimmed) return alert('Saison-Name darf nicht leer sein.');
+    if (trimmed === currentName) return; // keine Änderung
+    const { error } = await sb.from('seasons').update({ name: trimmed }).eq('id', seasonId);
+    if (error) { alert('Fehler beim Umbenennen: ' + error.message); return; }
+    // Cache invalidieren und Liste neu rendern; falls Detail dieser Saison offen ist, neu laden.
+    archiveListLoaded = false;
+    await renderArchiveList();
+    const detailEl = document.getElementById('archive-detail');
+    if (detailEl && detailEl.innerHTML.trim() !== '') {
+      // Wenn die umbenannte Saison gerade geöffnet ist, Detail neu rendern für aktualisiertes Label.
+      showArchiveSeason(seasonId);
+    }
+  }
+
+  // NEW: Admin-Delete einer archivierten Saison.
+  // Schutz: aktive Saison (currentSeasonId) darf hier niemals gelöscht werden.
+  // Robuste Reihenfolge:
+  //   1. season_snapshots der Saison explizit löschen (CASCADE wäre vorhanden, aber wir
+  //      sind defensiv und geben klare Fehlermeldungen zurück).
+  //   2. games.season_id auf NULL setzen für Spiele dieser Saison — historische Spiele
+  //      bleiben erhalten, nur die Saison-Zuordnung wird entfernt. Das vermeidet
+  //      FK-Verletzungen beim Löschen der Saison und bewahrt Spielhistorie.
+  //   3. Saison selbst löschen.
+  async function deleteArchivedSeason(seasonId, seasonName) {
+    if (role !== 'admin') return alert('Nur Admins können Saisons löschen.');
+    if (seasonId === currentSeasonId) {
+      alert('Die aktive Saison kann nicht aus dem Archiv gelöscht werden.');
+      return;
+    }
+    const msg = `Archivierte Saison "${seasonName}" wirklich löschen? Alle Snapshot-Daten dieser Saison werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.`;
+    if (!confirm(msg)) return;
+
+    // 1. Snapshots löschen.
+    const { error: snapErr } = await sb.from('season_snapshots').delete().eq('season_id', seasonId);
+    if (snapErr) { alert('Fehler beim Löschen der Snapshots: ' + snapErr.message); return; }
+
+    // 2. games.season_id für diese Saison auf NULL setzen (historische Spiele bewahren).
+    const { error: gErr } = await sb.from('games').update({ season_id: null }).eq('season_id', seasonId);
+    if (gErr) { alert('Fehler beim Lösen der Spiele von der Saison: ' + gErr.message); return; }
+
+    // 3. Saison selbst löschen.
+    const { error: sErr } = await sb.from('seasons').delete().eq('id', seasonId);
+    if (sErr) { alert('Fehler beim Löschen der Saison: ' + sErr.message); return; }
+
+    // Detailanzeige leeren falls die gelöschte Saison gerade angezeigt wird, dann Liste neu laden.
+    const detailEl = document.getElementById('archive-detail');
+    if (detailEl) detailEl.innerHTML = '';
+    archiveListLoaded = false;
+    await renderArchiveList();
   }
 
   // NEW: Zeigt die Endrangliste einer archivierten Saison aus season_snapshots.
@@ -1288,4 +1358,9 @@ layout: default
   #archive-detail h3 { margin-top: 0; }
   .mvp-line { background: #fff8e1; padding: 10px; border-radius: 8px; border-left: 4px solid #f1c40f; }
   #admin-season-controls { margin-top: 20px; }
+  /* NEW: Admin-Controls in Archiv-Zeilen — kompakt rechts, verhindern aber nicht den Row-Klick */
+  .archive-admin-controls { display: inline-flex; gap: 6px; }
+  .archive-edit-btn { background: #95a5a6; padding: 5px 10px; font-size: 0.8em; }
+  .archive-edit-btn:hover { background: #7f8c8d; }
+  .archive-del-btn { padding: 5px 10px; font-size: 0.8em; }
 </style>
