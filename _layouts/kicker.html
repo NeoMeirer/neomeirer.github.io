@@ -4,12 +4,16 @@ layout: default
 <div class="kicker-app">
   <header class="app-header">
     <h1>🏆 Kicker Liga Pro</h1>
+    <!-- NEW: Aktive Saison wird hier angezeigt; bei fehlender Saison erscheint ein Hinweis. -->
+    <div id="season-indicator" class="season-indicator"></div>
   </header>
   <nav class="main-tabs">
     <button onclick="switchTab('stats', this)" class="active">Stats</button>
     <button onclick="switchTab('charts', this)">Visualisierung</button>
     <button onclick="switchTab('chemistry', this)">Chemie</button>
     <button onclick="switchTab('history', this)">Spiele</button>
+    <!-- NEW: Archiv-Tab — sichtbar für alle (auch anon), zeigt nur abgeschlossene Saisons. -->
+    <button onclick="switchTab('archive', this)">Archiv</button>
     <button onclick="switchTab('admin', this)" id="admin-tab-btn" style="display:none;">Admin</button>
     <button onclick="switchTab('play', this)" id="play-tab-btn" style="display:none;">Eintragen</button>
     <button onclick="logout()" id="logout-btn" style="display:none;">Logout</button>
@@ -108,6 +112,22 @@ layout: default
         <button onclick="addPlayer()">Hinzufügen</button>
       </div>
     </section>
+    <!-- NEW: Saison-Verwaltung — Saison beenden + neue Saison starten. -->
+    <section id="admin-season-controls">
+      <h2>Saison-Verwaltung</h2>
+      <p class="section-desc">Beendet die aktuelle Saison, archiviert die Endstände und startet eine neue Saison. Alle ELOs werden auf 1000 zurückgesetzt.</p>
+      <button class="danger-btn" onclick="endSeasonAndStart()">Saison beenden &amp; neue Saison starten</button>
+    </section>
+  </div>
+
+  <!-- NEW: Archiv-Tab — listet abgeschlossene Saisons; Klick auf eine Saison zeigt Endrangliste. -->
+  <div id="tab-archive" class="tab-content">
+    <section>
+      <h2>📚 Archiv</h2>
+      <p class="section-desc">Abgeschlossene Saisons mit Endrangliste, Spielanzahl und MVP. Die laufende Saison wird hier nicht angezeigt.</p>
+      <div id="archive-list"><div class="loading">Lädt…</div></div>
+      <div id="archive-detail"></div>
+    </section>
   </div>
 </div>
 
@@ -115,7 +135,9 @@ layout: default
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   const sb = supabase.createClient('https://qqoxwxomidrdkwhwndcg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxb3h3eG9taWRyZGt3aHduZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwOTQzODgsImV4cCI6MjA5MTY3MDM4OH0.XteSAXrWrSRMwiN-3tYB6PyMZ1hLFPFg4-2dLU3QtOo');
-  let role = null, players = [], games = [], charts = {};
+  // NEW: currentSeason hält die aktuell aktive Saison. Alle Game-Queries und addGame
+  // müssen über season_id auf diese Saison gefiltert/geschrieben werden.
+  let role = null, players = [], games = [], charts = {}, currentSeason = null, currentSeasonId = null;
 
   // Role is determined by the user's email after Supabase Auth login.
   // - Emails in the "admins" table → role = 'admin'
@@ -136,6 +158,8 @@ layout: default
     if (tabId === 'charts') setTimeout(renderCharts, 50);
     // CHANGED: Chemie-Tab rendert erst beim ersten Öffnen (lazy)
     if (tabId === 'chemistry') renderChemistry();
+    // NEW: Archiv-Tab lazy laden, zeigt nur abgeschlossene Saisons
+    if (tabId === 'archive') renderArchiveList();
   }
 
   async function login() {
@@ -188,16 +212,17 @@ layout: default
 
   // FIXED: Pagination hinzugefügt — Supabase gibt standardmäßig nur 1000 Zeilen zurück.
   // Alle Spiele werden jetzt in 1000er-Batches geladen bis keine weiteren mehr kommen.
-  async function fetchAllGames() {
+  // CHANGED: Optionaler seasonId-Parameter filtert Spiele auf eine bestimmte Saison.
+  // Wenn null/undefined: alle Spiele (für Recalc/Migration). Sonst nur Spiele der Saison.
+  async function fetchAllGames(seasonId) {
     let allGames = [];
     let from = 0;
     const pageSize = 1000;
     while (true) {
-      const { data, error } = await sb
-        .from('games')
-        .select('*')
-        .order('played_at', { ascending: true })
-        .range(from, from + pageSize - 1);
+      // CHANGED: Query-Builder mit optionalem season_id-Filter
+      let q = sb.from('games').select('*').order('played_at', { ascending: true });
+      if (seasonId !== undefined && seasonId !== null) q = q.eq('season_id', seasonId);
+      const { data, error } = await q.range(from, from + pageSize - 1);
       // FIXED FIX3: Fehler beim Paginierungsabruf explizit loggen
       if (error) { console.error('fetchAllGames Fehler:', error); break; }
       if (!data || data.length === 0) break;
@@ -208,8 +233,62 @@ layout: default
     return allGames;
   }
 
+  // NEW: Lädt die aktuell aktive Saison oder erstellt sie bei Bedarf (nur für Admin/Auth-User).
+  // Für anon-User ohne aktive Saison: currentSeason bleibt null und ein Hinweis wird gerendert.
+  async function loadActiveSeason() {
+    const { data: season, error } = await sb.from('seasons').select('*').eq('is_active', true).maybeSingle();
+    if (error) {
+      console.error('loadActiveSeason Fehler:', error);
+      currentSeason = null;
+      currentSeasonId = null;
+      return;
+    }
+    if (season) {
+      currentSeason = season;
+      currentSeasonId = season.id;
+      return;
+    }
+    // Keine aktive Saison vorhanden — wenn ein authentifizierter User da ist, anlegen.
+    const { data: authData } = await sb.auth.getUser();
+    if (authData && authData.user) {
+      const { data: created, error: insErr } = await sb
+        .from('seasons')
+        .insert([{ name: 'Saison 1', is_active: true }])
+        .select()
+        .single();
+      if (insErr) {
+        console.error('Anlegen der Default-Saison fehlgeschlagen:', insErr);
+        currentSeason = null;
+        currentSeasonId = null;
+        return;
+      }
+      currentSeason = created;
+      currentSeasonId = created.id;
+    } else {
+      // Anon-Reader: Saison-Indikator zeigt einen klaren Hinweis.
+      currentSeason = null;
+      currentSeasonId = null;
+    }
+  }
+
+  // NEW: Rendert den Saison-Indikator im Header. Bei fehlender Saison: deutlicher Hinweis.
+  function renderSeasonIndicator() {
+    const el = document.getElementById('season-indicator');
+    if (!el) return;
+    if (currentSeason) {
+      el.textContent = `Aktuelle Saison: ${currentSeason.name}`;
+      el.classList.remove('no-season');
+    } else {
+      el.textContent = '⚠️ Keine aktive Saison — bitte mit Admin-Account anmelden, um eine Saison anzulegen.';
+      el.classList.add('no-season');
+    }
+  }
+
   async function loadAll() {
     document.getElementById('stats-loading').style.display = 'inline';
+    // NEW: Aktive Saison zuerst laden — alle weiteren Daten werden nach season_id gefiltert.
+    await loadActiveSeason();
+    renderSeasonIndicator();
     // FIXED FIX3: Error-Handling für players-SELECT — vorher stiller Fehler mit leerer Liste.
     const { data: pData, error: pErr } = await sb.from('players').select('*').order('elo', { ascending: false });
     if (pErr) {
@@ -221,9 +300,12 @@ layout: default
     players = pData || [];
     // FIXED FIX3: fetchAllGames() gibt bei Fehler leeres Array zurück (bereits intern gehandelt).
     // Zusätzlich: Fehlermeldung im History-Tab wenn games leer wegen Fehler.
-    games = await fetchAllGames();
+    // CHANGED: Nur Spiele der aktuellen Saison laden. Ohne aktive Saison bleibt games leer.
+    games = currentSeasonId ? await fetchAllGames(currentSeasonId) : [];
     // FIXED FIX5: chemistryRendered zurücksetzen damit neue Daten im Chemie-Tab erscheinen
     chemistryRendered = false;
+    // NEW: Archiv-Cache invalidieren, damit beim nächsten Tab-Wechsel neu geladen wird.
+    archiveListLoaded = false;
     updateDropdowns();
     renderStats();
     renderHistory();
@@ -252,6 +334,11 @@ layout: default
   }
 
   async function addGame() {
+    // NEW: addGame erfordert eine aktive Saison; sonst klare Fehlermeldung statt orphan-Eintrag.
+    if (!currentSeasonId) {
+      alert('Keine aktive Saison vorhanden. Bitte als Admin eine Saison anlegen, bevor Spiele eingetragen werden.');
+      return;
+    }
     const g = {
       team1_player1: document.getElementById('t1p1').value,
       team1_player2: document.getElementById('t1p2').value || null,
@@ -259,7 +346,9 @@ layout: default
       team2_player2: document.getElementById('t2p2').value || null,
       score_team1: parseInt(document.getElementById('s1').value),
       score_team2: parseInt(document.getElementById('s2').value),
-      archived: false
+      archived: false,
+      // NEW: season_id wird beim Insert mitgeschrieben — koppelt Spiel an aktuelle Saison.
+      season_id: currentSeasonId
     };
     if (!g.team1_player1 || !g.team2_player1 || isNaN(g.score_team1) || isNaN(g.score_team2)) return alert('Pflichtfelder!');
     if (g.score_team1 === g.score_team2) return alert('Kicker-Spiele enden nicht unentschieden — bitte korrektes Ergebnis eintragen.');
@@ -283,12 +372,12 @@ layout: default
     loadAll();
   }
 
-  // FIXED: Adaptiver K-Faktor: K=32 für < 30 Spiele, K=16 ab 30 Spielen.
-  // Außerdem: ELO-Diff wird jetzt als Dezimalzahl berechnet und erst beim Update gerundet,
-  // damit beide Teams exakt symmetrische Änderungen erhalten.
-  function getKFactor(playerElo, gamesPlayed) {
-    // K=32 für Anfänger (< 30 Spiele), K=16 für erfahrene Spieler
-    return gamesPlayed < 30 ? 32 : 16;
+  // CHANGED: K-Faktor auf 32/20 saisonbasiert. Erste 20 Spiele eines Spielers
+  // in der aktuellen Saison: K=32. Ab Spiel 21 in der aktuellen Saison: K=20.
+  // gamesPlayedInSeason zählt nur Spiele in der laufenden Saison, nicht lifetime.
+  function getKFactor(playerElo, gamesPlayedInSeason) {
+    // CHANGED: K=32 für die ersten 20 Saisonspiele, K=20 ab Spiel 21
+    return gamesPlayedInSeason < 20 ? 32 : 20;
   }
 
   // CHANGED: Gemeinsame ELO-Delta-Berechnung mit beiden Erweiterungen.
@@ -349,6 +438,17 @@ layout: default
     const t1 = [g.team1_player1, g.team1_player2].filter(Boolean);
     const t2 = [g.team2_player1, g.team2_player2].filter(Boolean);
 
+    // NEW: Saisonspezifische Spielanzahl pro Spieler aus der games-Liste ermitteln.
+    // Nur Spiele der aktuellen Saison zählen für den K-Faktor (32 erste 20 Saisonspiele, sonst 20).
+    // Das aktuelle Spiel g wurde bereits in die DB geschrieben, ist aber evtl. noch nicht in der
+    // lokalen games-Liste. Wir zählen daher Spiele in games (gleiche season_id) — das schließt
+    // den neuen Eintrag aus, was korrekt ist (vor diesem Spiel waren es so viele).
+    const seasonId = currentSeasonId;
+    const seasonGameCount = id => games.filter(gm =>
+      gm.season_id === seasonId &&
+      [gm.team1_player1, gm.team1_player2, gm.team2_player1, gm.team2_player2].includes(id)
+    ).length;
+
     // Team-Durchschnitts-Elos berechnen
     const elo1 = t1.reduce((s, id) => s + getPlayer(id).elo, 0) / t1.length;
     const elo2 = t2.reduce((s, id) => s + getPlayer(id).elo, 0) / t2.length;
@@ -365,19 +465,22 @@ layout: default
     // CHANGED: Delta-Berechnung via computeEloDelta() — enthält beide Erweiterungen:
     // 1. Gewichtetes Delta nach Spielerstärke im Team
     // 2. Margin of Victory Multiplikator (Torunterschied)
+    // CHANGED: K-Faktor basiert jetzt auf saisonspezifischer Spielanzahl (seasonGameCount).
     const t1EloSum = t1.reduce((s, id) => s + getPlayer(id).elo, 0);
     const t2EloSum = t2.reduce((s, id) => s + getPlayer(id).elo, 0);
     const updates = [
       ...t1.map(id => {
         const pl = getPlayer(id);
-        const K = getKFactor(pl.elo, pl.games_played || 0);
+        // CHANGED: Saisonspielanzahl statt lifetime games_played
+        const K = getKFactor(pl.elo, seasonGameCount(id));
         const delta = computeEloDelta(K, actual1, exp1, pl.elo, t1EloSum, g.score_team1, g.score_team2);
         const newElo = Math.round(pl.elo + delta);
         return sb.from('players').update({ elo: newElo, games_played: (pl.games_played || 0) + 1 }).eq('id', id);
       }),
       ...t2.map(id => {
         const pl = getPlayer(id);
-        const K = getKFactor(pl.elo, pl.games_played || 0);
+        // CHANGED: Saisonspielanzahl statt lifetime games_played
+        const K = getKFactor(pl.elo, seasonGameCount(id));
         const delta = computeEloDelta(K, actual2, exp2, pl.elo, t2EloSum, g.score_team2, g.score_team1);
         const newElo = Math.round(pl.elo + delta);
         return sb.from('players').update({ elo: newElo, games_played: (pl.games_played || 0) + 1 }).eq('id', id);
@@ -549,16 +652,26 @@ layout: default
     // FIXED F5: Katastrophaler Null-Fall abgefangen.
     // Vorher: wenn allPlayers=null → leere Map → alle ELOs in DB auf 1000 gesetzt.
     // Jetzt: bei Fehler oder leerer Spielerliste sofortige Rückkehr mit alert().
-    const { data: allPlayers, error: playersErr } = await sb.from('players').select('id, name');
+    // CHANGED: elo_start mitladen — Spieler starten in der laufenden Saison bei elo_start (Default 1000).
+    const { data: allPlayers, error: playersErr } = await sb.from('players').select('id, name, elo_start');
     if (playersErr) { alert('Fehler bei ELO-Neuberechnung: Spielerdaten konnten nicht geladen werden.'); return; }
     if (!allPlayers || allPlayers.length === 0) return; // keine Spieler = nichts zu tun
-    const remainingGames = await fetchAllGames();
+    // CHANGED: Nur Spiele der aktuellen Saison werden für die ELO-Neuberechnung verwendet —
+    // die Start-ELO der laufenden Saison ist bereits in players.elo_start hinterlegt
+    // (oder 1000 als Default). Spiele aus archivierten Saisons fließen nicht mehr ein.
+    const allRemainingGames = await fetchAllGames();
+    const remainingGames = currentSeasonId
+      ? allRemainingGames.filter(g => g.season_id === currentSeasonId)
+      : allRemainingGames;
 
-    // In-memory ELO-Map: alle Spieler starten bei 1000
+    // In-memory ELO-Map: alle Spieler starten bei elo_start (Default 1000).
+    // gamesPlayedMap zählt nur Spiele in der aktuellen Saison (Saisonspiele) — das ist die Basis
+    // für den K-Faktor (32 für die ersten 20 Saisonspiele, danach 20).
     const eloMap = {};
     const gamesPlayedMap = {};
     (allPlayers || []).forEach(p => {
-      eloMap[p.id] = 1000;
+      // CHANGED: Start-ELO aus players.elo_start (Default 1000) statt hartcodiert
+      eloMap[p.id] = p.elo_start ?? 1000;
       gamesPlayedMap[p.id] = 0;
     });
 
@@ -582,14 +695,16 @@ layout: default
       const t2EloSum = t2.reduce((s, id) => s + getElo(id), 0);
       t1.forEach(id => {
         const gp = gamesPlayedMap[id] || 0;
-        const K = gp < 30 ? 32 : 16;
+        // CHANGED: K-Faktor jetzt 32/20 saisonbasiert (gp = Saisonspiele bisher)
+        const K = gp < 20 ? 32 : 20;
         const delta = computeEloDelta(K, actual1, exp1, getElo(id), t1EloSum, g.score_team1, g.score_team2);
         eloMap[id] = Math.round(getElo(id) + delta);
         gamesPlayedMap[id] = gp + 1;
       });
       t2.forEach(id => {
         const gp = gamesPlayedMap[id] || 0;
-        const K = gp < 30 ? 32 : 16;
+        // CHANGED: K-Faktor jetzt 32/20 saisonbasiert (gp = Saisonspiele bisher)
+        const K = gp < 20 ? 32 : 20;
         const delta = computeEloDelta(K, actual2, exp2, getElo(id), t2EloSum, g.score_team2, g.score_team1);
         eloMap[id] = Math.round(getElo(id) + delta);
         gamesPlayedMap[id] = gp + 1;
@@ -646,7 +761,8 @@ layout: default
 
   // FIXED: ELO-History Chart benutzt jetzt die echte ELO-Formel statt dem fixem diff=16.
   // Vorher: e += diff_fixed (immer ±16, unabhängig von der ELO-Differenz)
-  // Jetzt: echte ELO-Formel mit K=32/16 je nach Spielanzahl, exakt wie updateElosInDb()
+  // CHANGED: Jetzt K=32/20 saisonbasiert (exakt wie updateElosInDb/recalculateAllElos).
+  //          games enthält in loadAll() bereits nur Spiele der aktuellen Saison.
   // CHANGED: Achsenbeschriftungen hinzugefügt (X = Spiel-Nr., Y = ELO)
   function renderEloChart() {
     if (charts.elo) charts.elo.destroy();
@@ -669,7 +785,8 @@ layout: default
         // Für exakte Rekonstruktion müsste der ELO aller Spieler zum Zeitpunkt t bekannt sein.
         // Wir approximieren: Gegner-ELO = 1000 (neutral), und berechnen nur den Richtungseffekt.
         // Das gibt den Trendverlauf korrekt wieder.
-        const K = gamesPlayed < 30 ? 32 : 16;
+        // CHANGED: K=32 für die ersten 20 Saisonspiele, K=20 ab Spiel 21
+        const K = gamesPlayed < 20 ? 32 : 20;
         // Vereinfachte Darstellung: Gegner hat 1000 als Basis-ELO (Trend-Approximation)
         const expWin = 1 / (1 + Math.pow(10, (1000 - e) / 400));
         const won = isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
@@ -895,6 +1012,195 @@ layout: default
     chemistryRendered = true;
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // NEW: SAISON-RESET MIT ARCHIVIERUNG
+  // Beendet die aktive Saison, archiviert die Endstände in season_snapshots,
+  // markiert die Saison als beendet und legt eine neue aktive Saison an.
+  // Anschließend werden alle Spieler-ELOs auf 1000 zurückgesetzt.
+  // ──────────────────────────────────────────────────────────────────────────
+  async function endSeasonAndStart() {
+    if (role !== 'admin') return alert('Nur Admins können eine Saison beenden.');
+    if (!currentSeason) return alert('Keine aktive Saison zum Beenden vorhanden.');
+
+    // 1. Bestätigung mit Saisonname
+    const confirmMsg = `Saison ${currentSeason.name} wirklich beenden? Diese Aktion kann nicht rückgängig gemacht werden.`;
+    if (!confirm(confirmMsg)) return;
+
+    // 2. Neuen Saisonnamen mit Auto-Increment-Default vorschlagen.
+    // Default basiert auf bestehender Saisonanzahl + 1.
+    const { data: allSeasons, error: seasonsErr } = await sb.from('seasons').select('id');
+    if (seasonsErr) { alert('Fehler beim Lesen der Saisons: ' + seasonsErr.message); return; }
+    const nextNum = (allSeasons?.length || 0) + 1;
+    const defaultName = `Saison ${nextNum}`;
+    const newName = prompt('Name der neuen Saison:', defaultName);
+    if (!newName || !newName.trim()) return alert('Saison-Erstellung abgebrochen — kein Name.');
+
+    // 3. Endstände in season_snapshots schreiben — eine Zeile pro Spieler.
+    // Wir laden Spielerdaten frisch um genau den DB-Stand zu archivieren.
+    const { data: snapshotPlayers, error: spErr } = await sb.from('players').select('id, name, elo');
+    if (spErr) { alert('Fehler beim Laden der Spieler für Snapshot: ' + spErr.message); return; }
+
+    // Saisonspezifische games_played und wins pro Spieler aus games-Liste berechnen.
+    // games enthält bereits nur Spiele der aktuellen Saison (siehe loadAll).
+    const statsForPlayer = (pid) => {
+      let played = 0, wins = 0;
+      games.forEach(g => {
+        const isT1 = [g.team1_player1, g.team1_player2].includes(pid);
+        const isT2 = [g.team2_player1, g.team2_player2].includes(pid);
+        if (!isT1 && !isT2) return;
+        played++;
+        const won = isT1 ? g.score_team1 > g.score_team2 : g.score_team2 > g.score_team1;
+        if (won) wins++;
+      });
+      return { played, wins };
+    };
+
+    const snapshots = (snapshotPlayers || []).map(p => {
+      const s = statsForPlayer(p.id);
+      return {
+        season_id: currentSeasonId,
+        player_id: p.id,
+        player_name: p.name,
+        elo_end: Math.round(p.elo),
+        games_played: s.played,
+        wins: s.wins
+      };
+    });
+
+    if (snapshots.length > 0) {
+      const { error: snapErr } = await sb.from('season_snapshots').insert(snapshots);
+      if (snapErr) { alert('Fehler beim Speichern der Snapshots: ' + snapErr.message); return; }
+    }
+
+    // 4. Aktuelle Saison auf inaktiv setzen + ended_at-Timestamp.
+    const { error: updErr } = await sb.from('seasons')
+      .update({ is_active: false, ended_at: new Date().toISOString() })
+      .eq('id', currentSeasonId);
+    if (updErr) { alert('Fehler beim Beenden der Saison: ' + updErr.message); return; }
+
+    // 5. Neue aktive Saison anlegen.
+    const { data: newSeason, error: insErr } = await sb.from('seasons')
+      .insert([{ name: newName.trim(), is_active: true }])
+      .select()
+      .single();
+    if (insErr) { alert('Fehler beim Anlegen der neuen Saison: ' + insErr.message); return; }
+
+    // 6. Alle Spieler-ELOs auf 1000 zurücksetzen + elo_start auf 1000.
+    // games_played wird ebenfalls genullt, da der saisonspezifische Zähler frisch beginnt.
+    // Wir holen alle Spieler-IDs und führen den Update gezielt mit .in() aus —
+    // das ist typ-agnostisch (funktioniert für uuid/int IDs gleichermaßen) und vermeidet
+    // einen all-rows-Hack.
+    const playerIds = (snapshotPlayers || []).map(p => p.id);
+    if (playerIds.length > 0) {
+      const { error: resetErr } = await sb.from('players')
+        .update({ elo: 1000, elo_start: 1000, games_played: 0 })
+        .in('id', playerIds);
+      if (resetErr) { alert('Fehler beim Reset der Spieler-ELOs: ' + resetErr.message); return; }
+    }
+
+    alert(`Saison "${currentSeason.name}" beendet und archiviert. Neue Saison "${newSeason.name}" gestartet.`);
+
+    // 7. Daten neu laden — currentSeason wird in loadAll() neu gesetzt.
+    await loadAll();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // NEW: ARCHIV-RENDERING
+  // Listet alle abgeschlossenen Saisons (is_active=false) und zeigt auf Klick
+  // die Endrangliste aus season_snapshots. MVP = meiste Siege, Tiebreak: ELO.
+  // ──────────────────────────────────────────────────────────────────────────
+  let archiveListLoaded = false;
+  let archiveSeasons = [];
+
+  async function renderArchiveList() {
+    const listEl = document.getElementById('archive-list');
+    const detailEl = document.getElementById('archive-detail');
+    if (archiveListLoaded) return; // Cache: nur einmal pro loadAll() laden
+    listEl.innerHTML = '<div class="loading">Lädt…</div>';
+    detailEl.innerHTML = '';
+
+    // Nur abgeschlossene Saisons (is_active=false), neueste zuerst.
+    const { data: seasons, error } = await sb
+      .from('seasons')
+      .select('*')
+      .eq('is_active', false)
+      .order('ended_at', { ascending: false });
+    if (error) {
+      listEl.innerHTML = '<p class="empty">⚠️ Archiv konnte nicht geladen werden.</p>';
+      console.error('Archiv Fehler:', error);
+      return;
+    }
+    archiveSeasons = seasons || [];
+    if (!archiveSeasons.length) {
+      listEl.innerHTML = '<p class="empty">Noch keine archivierten Saisons.</p>';
+      archiveListLoaded = true;
+      return;
+    }
+
+    // Für Spielanzahl pro Saison die snapshots laden (games_played-Summe / 2 = Spielanzahl
+    // weil pro Spiel 2-4 Spielereinträge vorkommen). Einfacher: count über games.season_id.
+    // Wir machen einen schmalen count-Roundtrip pro Saison — für eine Liga mit wenigen
+    // Saisons ist das ausreichend.
+    const rows = await Promise.all(archiveSeasons.map(async (s) => {
+      const { count } = await sb
+        .from('games')
+        .select('*', { count: 'exact', head: true })
+        .eq('season_id', s.id);
+      return { ...s, gameCount: count ?? 0 };
+    }));
+
+    listEl.innerHTML = rows.map(s => {
+      const ended = s.ended_at ? new Date(s.ended_at).toLocaleDateString('de-DE') : '—';
+      return `<div class="archive-row" onclick="showArchiveSeason(${JSON.stringify(s.id)})">
+        <span class="archive-name"><strong>${s.name}</strong></span>
+        <span class="archive-date">📅 ${ended}</span>
+        <span class="archive-games">🎮 ${s.gameCount} Spiele</span>
+      </div>`;
+    }).join('');
+    archiveListLoaded = true;
+  }
+
+  // NEW: Zeigt die Endrangliste einer archivierten Saison aus season_snapshots.
+  // MVP-Logik: höchste wins, Tiebreak höchste elo_end.
+  async function showArchiveSeason(seasonId) {
+    const detailEl = document.getElementById('archive-detail');
+    detailEl.innerHTML = '<div class="loading">Lädt Endrangliste…</div>';
+
+    const season = archiveSeasons.find(s => s.id === seasonId);
+    const { data: snaps, error } = await sb
+      .from('season_snapshots')
+      .select('*')
+      .eq('season_id', seasonId)
+      .order('elo_end', { ascending: false });
+    if (error) {
+      detailEl.innerHTML = '<p class="empty">⚠️ Endrangliste konnte nicht geladen werden.</p>';
+      return;
+    }
+    if (!snaps || !snaps.length) {
+      detailEl.innerHTML = `<h3>${season?.name || 'Saison'}</h3><p class="empty">Keine Snapshot-Einträge für diese Saison.</p>`;
+      return;
+    }
+
+    // MVP: meiste wins, Tiebreak höchste elo_end.
+    const mvp = [...snaps].sort((a, b) => (b.wins - a.wins) || (b.elo_end - a.elo_end))[0];
+
+    let html = `<h3>${season?.name || 'Saison'} — Endrangliste</h3>`;
+    html += `<p class="mvp-line">🏅 <strong>MVP:</strong> ${mvp.player_name} (${mvp.wins} Siege, ELO ${mvp.elo_end})</p>`;
+    html += '<table><thead><tr><th>#</th><th>Spieler</th><th>End-ELO</th><th>Spiele</th><th>Siege</th></tr></thead><tbody>';
+    snaps.forEach((s, i) => {
+      const m = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1);
+      html += `<tr>
+        <td>${m}</td>
+        <td><strong>${s.player_name}</strong></td>
+        <td><span class="elo-badge">${s.elo_end}</span></td>
+        <td style="color:#777;">${s.games_played}</td>
+        <td>${s.wins}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    detailEl.innerHTML = html;
+  }
+
   // FIXED: loadAll() beim Start aufrufen damit Stats/Spiele/Charts ohne Login sichtbar sind.
   // Nur Eintragen (play) und Admin benötigen Auth — public-read Tabs laden sofort.
   // Supabase anon-Rolle hat SELECT-Rechte auf players/games (RLS korrekt gesetzt).
@@ -971,4 +1277,15 @@ layout: default
     /* CHANGED: Tabellen auf Mobile horizontal scrollbar */
     #h2h-matrix, #stats-table, #chemistry-table { overflow-x: auto; display: block; }
   }
+  /* NEW: Saison-Indikator und Archiv-Styling */
+  .season-indicator { text-align: center; color: #5f6f7a; font-size: 0.9rem; margin-bottom: 8px; }
+  .season-indicator.no-season { color: var(--danger); font-weight: bold; }
+  .archive-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; gap: 10px; flex-wrap: wrap; }
+  .archive-row:hover { background: #f9f9f9; }
+  .archive-name { flex: 1; min-width: 120px; }
+  .archive-date, .archive-games { color: #777; font-size: 0.9rem; }
+  #archive-detail { margin-top: 20px; }
+  #archive-detail h3 { margin-top: 0; }
+  .mvp-line { background: #fff8e1; padding: 10px; border-radius: 8px; border-left: 4px solid #f1c40f; }
+  #admin-season-controls { margin-top: 20px; }
 </style>
