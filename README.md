@@ -69,10 +69,3 @@ My TODOs:
 
 - [ ] learn about markdown syntax (to write posts properly)
 - [ ] add posts and blogs
-
-KickerTicker Verbesserungen:
-
-- [ ] Hinzufügen des Chemie-Bonus: Welche Spielerpaare performen besser als erwartet? (Tatsächliche Gewinnrate vs. erwartete basierend auf Einzel-Elos)
-
-- [ ] Ergebnisse der letzten Spiele alle mittig übereinander 
-- [ ] Vernändern sich Stats richtig, wenn man Spiele löscht 
