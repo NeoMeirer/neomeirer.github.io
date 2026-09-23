@@ -1,10 +1,10 @@
 ---
 layout: homepage
-title: "welcome"
+title: "Willkommen"
 author: "Neo"
 permalink: /
 ---
 
-Hi, I'm Neo. This is my little digital playground — small apps, games, and experiments.
+Hi, ich bin Neo. Das hier ist **neolabs** — mein digitales Spielzimmer für kleine Apps, Spiele und Experimente.
 
-Start with the [Pentomino Game]({{ site.baseurl }}/2025-02-12/Pentomino), or browse the projects below.
+Starte mit dem [Bierkompass]({{ site.baseurl }}/2026-08-01/Bierkompass) oder dem [Pentomino-Spiel]({{ site.baseurl }}/2025-02-12/Pentomino), oder stöbere unten durch die Projekte.
