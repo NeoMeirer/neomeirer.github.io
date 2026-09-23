@@ -3,19 +3,20 @@ layout: default
 ---
 
 <div class="post">
-  <div class="post-info">
-    <span>written by</span>
-    {% if page.author %}
-        {{ page.author }}
-    {% else %}
-        {{ site.author.name }}
-    {% endif %}
-  </div>
-
   <h1 class="post-title">{{ page.title }}</h1>
   <div class="post-line"></div>
 
-  <img src="assets/me2.jpeg" style="object-fit: cover; object-position: top center; border-radius: 50%; width: 200px; height: 200px;" />
+  <img src="{{ site.baseurl }}/assets/me2.jpeg" alt="Neo" style="object-fit: cover; object-position: top center; border-radius: 50%; width: 200px; height: 200px;" />
   <br>
   {{ content }}
 </div>
+
+<section class="catalogue home-projects">
+  <h2 class="tags-header-title" style="text-align:left;margin-top:2rem;">projects</h2>
+  <div class="tags-header-line" style="margin-left:0;"></div>
+
+  {% assign home_posts = site.posts | sort: 'date' | reverse %}
+  {% for post in home_posts %}
+    {% include catalogue_item.html %}
+  {% endfor %}
+</section>
