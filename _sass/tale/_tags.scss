@@ -52,7 +52,10 @@
   &-post {
     display: flex;
     justify-content: space-between;
-    padding: 5px 0;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    text-decoration: none;
 
     &-title {
       color: $default-color;
@@ -60,6 +63,13 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    &-desc {
+      display: block;
+      color: $default-tint;
+      font-size: 0.9rem;
+      margin-top: 0.1rem;
     }
 
     &-line {

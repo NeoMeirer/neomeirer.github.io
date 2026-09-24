@@ -1,6 +1,7 @@
 ---
 layout: post
 title: "Bierkompass"
+description: "Zeigt dir den Weg zur nächsten Bar, gemeinsam mit Freunden."
 author: "Neo"
 tags: community
 ---

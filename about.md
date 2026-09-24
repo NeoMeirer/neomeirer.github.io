@@ -5,6 +5,6 @@ author: "Neo"
 permalink: /
 ---
 
-Hi, I'm Neo. This is my little digital playground — small apps, games, and experiments.
+Hi, ich bin Neo. Das hier ist mein kleiner digitaler Spielplatz mit Apps, Spielen und Experimenten.
 
-Start with the [Pentomino Game]({{ site.baseurl }}/2025-02-12/Pentomino), or browse the projects below.
+Alle Projekte findest du unter [collections]({{ site.baseurl }}/collections/). Ein guter Einstieg ist das [Pentomino-Spiel]({{ site.baseurl }}/2025-02-12/Pentomino).

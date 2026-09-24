@@ -1,6 +1,7 @@
 ---
 layout: post
 title: "Pentomino"
+description: "Taktisches Legespiel für zwei: Steine ziehen, Brett füllen."
 author: "Neo"
 tags: games
 ---
