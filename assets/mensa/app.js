@@ -14,7 +14,7 @@
   const UPLOAD_TIMEOUT = 60000;
   const URL_TTL = 24 * 3600;        // signierte Foto-Links gelten 1 Tag
   const PAGE = 30;
-  const SERVING_COLS = 'id,dish_id,canteen_id,served_on,price_cents,note,photo_path,thumb_path,created_by,created_at';
+  const SERVING_COLS = 'id,dish_id,canteen_id,served_on,note,photo_path,thumb_path,created_by,created_at';
   const LS = { cache: 'mensa.cache.v1', urls: 'mensa.urls.v1', canteen: 'mensa.canteen' };
 
   const configured = !!(CFG.url && CFG.key && window.supabase && L);
@@ -45,7 +45,6 @@
   const canteenName = id => S.canteens.find(c => c.id === id)?.name ?? '';
   const activeCanteens = () => S.canteens.filter(c => c.active);
   const byCreated = (a, b) => String(a.created_at).localeCompare(String(b.created_at));
-  const priceInput = cents => (cents == null ? '' : L.formatPrice(cents).replace(' €', ''));
 
   function servedCount() {
     const m = new Map();
@@ -542,8 +541,7 @@
     const mine = S.mine.get(s.id);
     const up = S.uploads.get(s.id);
     const by = S.members.get(s.created_by);
-    const meta = [canteenName(s.canteen_id), L.dayLabel(s.served_on), s.price_cents != null ? L.formatPrice(s.price_cents) : '']
-      .filter(Boolean).map(esc).join(' · ');
+    const meta = [canteenName(s.canteen_id), L.dayLabel(s.served_on)].filter(Boolean).map(esc).join(' · ');
 
     let photo;
     if (up) {
@@ -657,7 +655,7 @@
   function newForm(preset = {}) {
     return {
       photo: null, photoBusy: false, photoTask: null, photoError: '',
-      canteen: null, date: today(), dishId: null, name: '', price: '', note: '',
+      canteen: null, date: today(), dishId: null, name: '', note: '',
       confirmNew: false, submitting: false, error: '', ...preset
     };
   }
@@ -682,11 +680,8 @@
         <input class="mr-input" name="name" value="${esc(F.name)}" placeholder="z. B. Käsespätzle" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="120"></label>
       <div id="mr-dish-info"></div>
       <div id="mr-menu" class="mr-menu"></div>
-      <details class="mr-more"${F.price || F.note ? ' open' : ''}><summary>Preis &amp; Notiz (optional)</summary>
-        <div class="mr-field-row">
-          <label class="mr-field" style="flex:0 0 6.5rem"><span>Preis in €</span><input class="mr-input" name="price" inputmode="decimal" placeholder="3,40" value="${esc(F.price)}" maxlength="6"></label>
-          <label class="mr-field"><span>Notiz</span><input class="mr-input" name="note" maxlength="200" placeholder="z. B. Soße war kalt" value="${esc(F.note)}"></label>
-        </div>
+      <details class="mr-more"${F.note ? ' open' : ''}><summary>Notiz (optional)</summary>
+        <label class="mr-field"><span class="mr-sr">Notiz</span><input class="mr-input" name="note" maxlength="200" placeholder="z. B. Soße war kalt" value="${esc(F.note)}"></label>
       </details>
       <p class="mr-form-error" id="mr-form-error" role="alert">${esc(F.error)}</p>
       <button class="mr-btn mr-btn-primary mr-btn-block" type="submit" id="mr-submit">Eintragen</button>
@@ -751,7 +746,7 @@
   }
 
   // Tagesgerichte von openmensa.org als Schnellauswahl
-  const menus = new Map();      // "id|datum" → Promise<[{name, price_cents}]>
+  const menus = new Map();      // "id|datum" → Promise<[{name, category}]>
   const menuItems = new Map();  // "id|datum" → aufgelöste Liste
   function fetchMenu(id, date) {
     const ctrl = new AbortController();
@@ -787,7 +782,7 @@
       ? '<p class="mr-suggest-label">Speiseplan gerade nicht erreichbar – einfach selbst eintippen.</p>'
       : items.length
         ? `<p class="mr-suggest-label">Laut Speiseplan (openmensa.org) – antippen:</p><div class="mr-chips">${items.map((it, i) =>
-            `<button type="button" class="mr-chip" data-action="menu" data-key="${esc(key)}" data-i="${i}">${esc(it.name)}${it.price_cents != null ? ` <small>${L.formatPrice(it.price_cents)}</small>` : ''}</button>`).join('')}</div>`
+            `<button type="button" class="mr-chip" data-action="menu" data-key="${esc(key)}" data-i="${i}">${esc(it.name)}</button>`).join('')}</div>`
         : '<p class="mr-suggest-label">Für diesen Tag steht nichts im Speiseplan.</p>';
   }
 
@@ -817,8 +812,6 @@
     if (!exact && L.nameKey(name).length < 2) return formError('Wie heißt das Gericht?');
     if (!F.canteen) return formError('Bitte eine Mensa wählen.');
     if (!F.date || F.date > today()) return formError('Das Datum darf nicht in der Zukunft liegen.');
-    const price = L.parsePrice(F.price);
-    if (Number.isNaN(price)) return formError('Preis bitte wie „3,40“ angeben (höchstens 50 €).');
     if (!exact && F.confirmNew !== 'yes') {
       const counts = servedCount();
       if (L.similarDishes(name, allDishes().filter(d => counts.get(d.id))).length) {
@@ -841,7 +834,6 @@
         p_served_on: F.date,
         p_dish_id: exact ? exact.id : null,
         p_dish_name: exact ? null : name,
-        p_price_cents: price,
         p_note: L.cleanName(F.note) || null
       }));
       const [row, dish] = await Promise.all([
@@ -889,10 +881,7 @@
           `<option value="${c.id}"${c.id === s.canteen_id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>` : ''}
         <label class="mr-field"><span>Datum</span><input class="mr-input" type="date" name="date" value="${s.served_on}" max="${today()}"></label>
       </div>
-      <div class="mr-field-row">
-        <label class="mr-field" style="flex:0 0 6.5rem"><span>Preis in €</span><input class="mr-input" name="price" inputmode="decimal" value="${priceInput(s.price_cents)}" maxlength="6"></label>
-        <label class="mr-field"><span>Notiz</span><input class="mr-input" name="note" maxlength="200" value="${esc(s.note || '')}"></label>
-      </div>
+      <label class="mr-field"><span>Notiz</span><input class="mr-input" name="note" maxlength="200" value="${esc(s.note || '')}"></label>
       ${s.photo_path ? `<p><button type="button" class="mr-link mr-link-danger" data-action="remove-photo" data-id="${id}">Foto entfernen</button></p>` : ''}
       <p class="mr-form-error" id="mr-edit-error" role="alert"></p>
       <div class="mr-dialog-actions">
@@ -913,8 +902,6 @@
     const errEl = $('#mr-edit-error');
     const name = L.cleanName(fd.get('name'));
     if (L.nameKey(name).length < 2) { errEl.textContent = 'Wie heißt das Gericht?'; return; }
-    const price = L.parsePrice(fd.get('price'));
-    if (Number.isNaN(price)) { errEl.textContent = 'Preis bitte wie „3,40“ angeben (höchstens 50 €).'; return; }
     const date = String(fd.get('date') || s.served_on);
     if (date > today()) { errEl.textContent = 'Das Datum darf nicht in der Zukunft liegen.'; return; }
     const btn = form.querySelector('[type="submit"]');
@@ -930,7 +917,7 @@
           dishId = d.id;
         }
       }
-      const patch = { dish_id: dishId, served_on: date, price_cents: price, note: L.cleanName(fd.get('note')) || null };
+      const patch = { dish_id: dishId, served_on: date, note: L.cleanName(fd.get('note')) || null };
       if (fd.get('canteen')) patch.canteen_id = Number(fd.get('canteen'));
       const row = await run(sb.from('mensa_servings').update(patch).eq('id', id).select(SERVING_COLS).single());
       S.servings.set(id, row);
@@ -1339,7 +1326,6 @@
         if (!F || !it) return;
         Object.assign(F, { name: it.name, dishId: null, confirmNew: false });
         syncField('name', it.name);
-        if (it.price_cents != null && !F.price) { F.price = priceInput(it.price_cents); syncField('price', F.price); }
         formError('');
         return renderDishInfo();
       }
@@ -1380,8 +1366,7 @@
       F.dishId = null;
       F.confirmNew = false;
       renderDishInfo();
-    } else if (t.name === 'price') F.price = t.value;
-    else if (t.name === 'note') F.note = t.value;
+    } else if (t.name === 'note') F.note = t.value;
     else if (t.name === 'date') { F.date = t.value || today(); renderMenu(); }
     else if (t.name === 'canteen') { F.canteen = Number(t.value); store.set(LS.canteen, F.canteen); renderMenu(); }
     if (F.error) formError('');

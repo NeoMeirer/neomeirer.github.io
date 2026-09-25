@@ -79,7 +79,7 @@ A = du (Admin), B = zweites Mitglied. Am besten zwei Geräte, oder zweites Brows
 |---|---|
 | E-Mail, Passwort (Supabase Auth) | nur du im Dashboard |
 | Anzeigename | Mitglieder |
-| Einträge (Gericht, Mensa, Datum, Preis, Notiz, Foto, wer eingetragen hat) | Mitglieder |
+| Einträge (Gericht, Mensa, Datum, Notiz, Foto, wer eingetragen hat) | Mitglieder |
 | Einzelne Noten und Sättigungs-Eindrücke | nur die Person selbst (und du im Dashboard) – alle anderen sehen Anzahl und Schnitt |
 | Fotos | Mitglieder, über Links, die nach 1 Tag ablaufen; vor dem Upload verkleinert, EXIF/GPS entfernt |
 

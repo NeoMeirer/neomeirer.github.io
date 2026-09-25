@@ -189,18 +189,6 @@
     return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', ...(sameYear ? {} : { year: 'numeric' }) });
   }
 
-  // ── Preis ─────────────────────────────────────────────────────────────────
-  // "3,40" / "3.4" / "3 €" → Cent; leer → null; ungültig → NaN
-  function parsePrice(input) {
-    const s = String(input ?? '').replace(/\s|€/g, '');
-    if (!s) return null;
-    const m = /^(\d{1,2})(?:[.,](\d{1,2}))?$/.exec(s);
-    if (!m) return NaN;
-    const cents = Number(m[1]) * 100 + Number(((m[2] || '') + '00').slice(0, 2));
-    return cents <= 5000 ? cents : NaN;
-  }
-  const formatPrice = cents => (cents / 100).toFixed(2).replace('.', ',') + ' €';
-
   // ── Speiseplan (OpenMensa) ────────────────────────────────────────────────
   // Kürzel wie „(vegan,3,GlWe,Se)“ entfernen, Hinweise wie „(je 100g)“ behalten.
   function isCodeList(inner) {
@@ -211,7 +199,7 @@
     const first = String(raw ?? '').split('\n')[0];
     return cleanName(first.replace(/\s*\(([^()]*)\)/g, (m, inner) => (isCodeList(inner) ? '' : m)));
   }
-  // Mahlzeiten eines Tages → [{name, price_cents, category}], ohne Doppelte
+  // Mahlzeiten eines Tages → [{name, category}], ohne Doppelte
   function parseMenu(meals) {
     const seen = new Set();
     const out = [];
@@ -220,13 +208,7 @@
       const key = nameKey(name);
       if (!key || key.length < 2 || seen.has(key)) continue;
       seen.add(key);
-      const perWeight = /je\s*100\s*g/i.test(String(m?.name));
-      const p = m?.prices?.students;
-      out.push({
-        name: name.slice(0, 120),
-        price_cents: !perWeight && typeof p === 'number' && p >= 0 && p <= 50 ? Math.round(p * 100) : null,
-        category: m?.category || ''
-      });
+      out.push({ name: name.slice(0, 120), category: m?.category || '' });
     }
     return out;
   }
@@ -247,7 +229,7 @@
     MIN_VOTES, FILLING, SIMILAR,
     nameKey, cleanName, dice, matchScore, suggest, findExact, similarDishes, matchesSearch,
     summarize, combine, formatAvg, votesLabel, scoreText, fillingText, dishHistory, rankDishes,
-    isoDate, addDays, dayLabel, parsePrice, formatPrice,
+    isoDate, addDays, dayLabel,
     cleanMenuName, parseMenu, fitSize, photoPaths
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -132,17 +132,7 @@ test('Datum: lokal statt UTC, verständliche Labels', () => {
   assert.match(L.dayLabel('2025-12-31', '2026-01-05'), /2025/);
 });
 
-test('Preis: deutsch eingeben, in Cent speichern', () => {
-  assert.equal(L.parsePrice('3,40'), 340);
-  assert.equal(L.parsePrice('3.4'), 340);
-  assert.equal(L.parsePrice(' 3 € '), 300);
-  assert.equal(L.parsePrice(''), null);
-  assert.ok(Number.isNaN(L.parsePrice('drei')));
-  assert.ok(Number.isNaN(L.parsePrice('80,00')));  // über 50 €
-  assert.equal(L.formatPrice(290), '2,90 €');
-});
-
-test('Speiseplan: Kürzel weg, Hinweise bleiben, Preis nur wenn eindeutig', () => {
+test('Speiseplan: Kürzel weg, Hinweise bleiben, keine Doppelten', () => {
   const meals = [
     { name: 'Kichererbseneintopf mit Gemüse, dazu ein Stück Obst (vegan,3,Se)\n', category: 'D', prices: { students: 2.9 } },
     { name: 'Schlemmerbuffet (je 100g)\nReichhaltige Auswahl …\n', category: 'A+B', prices: { students: 0.99 } },
@@ -151,9 +141,9 @@ test('Speiseplan: Kürzel weg, Hinweise bleiben, Preis nur wenn eindeutig', () =
     { name: '\n', prices: {} }
   ];
   assert.deepEqual(L.parseMenu(meals), [
-    { name: 'Kichererbseneintopf mit Gemüse, dazu ein Stück Obst', price_cents: 290, category: 'D' },
-    { name: 'Schlemmerbuffet (je 100g)', price_cents: null, category: 'A+B' },
-    { name: 'Tagessuppe', price_cents: 60, category: 'A+B' }
+    { name: 'Kichererbseneintopf mit Gemüse, dazu ein Stück Obst', category: 'D' },
+    { name: 'Schlemmerbuffet (je 100g)', category: 'A+B' },
+    { name: 'Tagessuppe', category: 'A+B' }
   ]);
   assert.equal(L.cleanMenuName('Hähnchen (2,3) mit Reis (GlWe)'), 'Hähnchen mit Reis');
   assert.deepEqual(L.parseMenu(null), []);
