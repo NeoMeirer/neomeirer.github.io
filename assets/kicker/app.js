@@ -13,6 +13,7 @@
   const PLACEMENT = 10;      // ab so vielen Spielen erscheint man in der Rangliste
   const UNDO_MINUTES = 15;   // so lange darf man eigene Einträge selbst löschen (siehe RLS)
   const DAY = 864e5;
+  const NEW_PLAYER = '__new__';   // Auswahl-Wert für „+ Neuer Spieler …“
 
   const TABS = {
     rank: 'rangliste', player: 'spieler', duos: 'duos', lineup: 'aufstellung',
@@ -688,6 +689,7 @@
       const key = `t${t}p${i + 1}`;
       return `<label class="kt-field"><span>${lab(i)}</span><select data-slot="${key}">
         <option value="">– wählen –</option>${active.map(p => `<option value="${esc(p.id)}" ${E.slots[key] === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+        <option value="${NEW_PLAYER}">+ Neuer Spieler …</option>
       </select></label>`;
     };
     const teamBox = t => `<fieldset class="kt-team"><legend>Team ${t}</legend>
@@ -711,6 +713,46 @@
         <button type="submit" class="kt-btn kt-btn-primary">Spiel speichern</button>
       </form></div>`;
     updatePrediction();
+  }
+
+  // Legt einen Spieler an und liefert ihn zurück (oder null). Gibt es den Namen schon aktiv,
+  // wird der bestehende Spieler zurückgegeben statt eines Duplikats.
+  async function createPlayer(rawName) {
+    const name = String(rawName ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) return null;
+    if (name.length > 40) { alert('Der Name darf höchstens 40 Zeichen lang sein.'); return null; }
+    const existing = S.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      if (existing.active !== false) return existing;
+      alert(`„${existing.name}“ gibt es schon, ist aber deaktiviert. ${S.admin ? 'Im Admin-Bereich wieder aktivieren.' : 'Ein Admin kann den Spieler wieder aktivieren.'}`);
+      return null;
+    }
+    // elo/games_played/elo_start: Altspalten aus v1, falls sie NOT NULL ohne Default sind
+    const { data, error } = await sb.from('players')
+      .insert([{ name, active: true, elo: 1000, games_played: 0, elo_start: 1000 }]).select().single();
+    if (error) {
+      alert(error.code === '23505' ? 'Den Namen gibt es schon.'
+        : error.code === '42501' ? 'Keine Berechtigung, Spieler anzulegen – bitte Admin fragen.'
+        : 'Spieler konnte nicht angelegt werden: ' + error.message);
+      return null;
+    }
+    S.players.push(data);
+    S.byId.set(data.id, data);
+    cache.clear();
+    toast(`„${data.name}“ angelegt.`);
+    return data;
+  }
+
+  async function onSlotChange(select) {
+    const key = select.dataset.slot;
+    if (select.value !== NEW_PLAYER) {
+      S.entry.slots[key] = select.value || null;
+      return updatePrediction();
+    }
+    select.value = S.entry.slots[key] || '';
+    const p = await createPlayer(prompt('Name des neuen Spielers:'));
+    if (p) S.entry.slots[key] = p.id;
+    render();
   }
 
   function entrySlots() {
@@ -930,7 +972,7 @@
   function onChange(e) {
     const t = e.target;
     if (t.dataset.action === 'pick-player') { S.player = t.value; return render(); }
-    if (t.dataset.slot) { S.entry.slots[t.dataset.slot] = t.value || null; return updatePrediction(); }
+    if (t.dataset.slot) return onSlotChange(t);
     if (t.dataset.rename) renamePlayer(t.dataset.rename, t.value);
   }
 
@@ -965,13 +1007,10 @@
       return;
     }
     if (kind === 'add-player') {
-      const name = String(new FormData(form).get('name')).trim();
-      if (!name) return;
-      if (S.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return alert('Den Namen gibt es schon.');
-      // elo/games_played/elo_start: Altspalten aus v1, falls sie NOT NULL ohne Default sind
-      const { error } = await sb.from('players').insert([{ name, elo: 1000, games_played: 0, elo_start: 1000 }]);
-      if (error) return alert(error.message);
-      await loadData(); render();
+      const input = form.elements.name;
+      const exists = S.players.some(p => p.name.toLowerCase() === input.value.trim().toLowerCase());
+      if (exists) return alert('Den Namen gibt es schon.');
+      if (await createPlayer(input.value)) { input.value = ''; render(); }
     }
   }
 
