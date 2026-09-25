@@ -47,6 +47,11 @@ Dann Code, der Mausklick simuliert, am Ende des <body>-Tags in der index.html (P
 </script>
 
 
+Mensa-Ranking (`/mensa/`): Einrichtung in Supabase siehe `_supabase/MENSA_SETUP.md`. Tests (Logik + SQL/RLS mit PGlite):
+```bash
+cd _tests && npm install && npm test
+```
+
 Use if changes are not deployed or in case of bugs
 ```bash
 bundle exec jekyll clean

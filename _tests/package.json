@@ -1,0 +1,12 @@
+{
+  "name": "neolabs-tests",
+  "private": true,
+  "description": "Tests für Mensa-Ranking (logic.js) und die Supabase-Migration (PGlite). Wird von Jekyll nicht veröffentlicht.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

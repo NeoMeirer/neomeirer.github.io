@@ -1,0 +1,51 @@
+---
+layout: default
+---
+{% assign v = site.time | date: '%s' %}
+<link rel="stylesheet" href="{{ '/assets/mensa/mensa.css' | relative_url }}?v={{ v }}">
+
+<div class="mr" id="mr">
+  <header class="mr-header">
+    <div>
+      <h1 class="mr-title">Mensa-Ranking</h1>
+      <p class="mr-status" id="mr-status">Lädt …</p>
+    </div>
+    <div class="mr-auth" id="mr-auth"></div>
+  </header>
+
+  <nav class="mr-tabs" id="mr-tabs" aria-label="Bereiche" hidden>
+    <button type="button" data-tab="today">Heute</button>
+    <button type="button" data-tab="entry">+ Eintragen</button>
+    <button type="button" data-tab="history">Verlauf</button>
+  </nav>
+
+  <p class="mr-banner" id="mr-offline" role="status" hidden>Offline – du siehst den zuletzt geladenen Stand.</p>
+
+  <div class="mr-body-wrap">
+    <section class="mr-panel" data-panel="today"></section>
+    <section class="mr-panel" data-panel="entry"></section>
+    <section class="mr-panel" data-panel="history"></section>
+    <section class="mr-panel" data-panel="dish"></section>
+    <section class="mr-panel" data-panel="account"></section>
+    <section class="mr-panel" data-panel="login"></section>
+  </div>
+
+  <!-- ein gemeinsames Datei-Feld für alle Foto-Knöpfe -->
+  <input class="mr-sr" type="file" id="mr-file" accept="image/*" tabindex="-1" aria-hidden="true">
+  <dialog class="mr-dialog" id="mr-dialog"></dialog>
+  <div class="mr-toast" id="mr-toast" role="status" aria-live="polite" hidden></div>
+</div>
+
+<script>
+  window.MENSA_CONFIG = {
+    // separates Supabase-Projekt nur für das Mensa-Ranking
+    url: 'https://bheloocuzjmhtlmqjvxb.supabase.co',
+    // öffentlicher Publishable Key – Rechte regeln RLS-Policies (siehe _supabase/mensa_v1.sql)
+    key: 'sb_publishable_fE_Xdsq52lsCy7kJjpOkMg_BFiQKDhh',
+    // Tagesgerichte von openmensa.org als Schnellauswahl
+    openmensa: true
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="{{ '/assets/mensa/logic.js' | relative_url }}?v={{ v }}"></script>
+<script src="{{ '/assets/mensa/app.js' | relative_url }}?v={{ v }}"></script>

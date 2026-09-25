@@ -7,3 +7,4 @@ Gemfile.lock
 .jekyll-cache
 __pycache__/
 *.pyc
+node_modules/
