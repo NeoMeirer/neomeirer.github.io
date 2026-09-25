@@ -339,6 +339,10 @@ begin
   assert n = 0, 'CHECK FEHLGESCHLAGEN: zusammengeführtes Gericht bleibt bestehen';
 
   -- ── 7. Fotos ─────────────────────────────────────────────────────────────
+  -- Supabase sperrt direkte DELETEs auf storage.objects grundsätzlich (Trigger storage.protect_delete);
+  -- die Storage-API setzt beim Löschen storage.allow_delete_query. Hier genauso – nur in diesem
+  -- Testlauf, der am Ende komplett zurückgerollt wird –, damit die Lösch-Policy selbst geprüft wird.
+  perform set_config('storage.allow_delete_query', 'true', true);
   perform pg_temp.mensa_login(v_anna);
   begin
     insert into storage.objects (bucket_id, name, owner, owner_id)
@@ -418,6 +422,20 @@ begin
   reset role;
   select count(*) into n from public.mensa_servings where id = s1 and photo_path is null;
   assert n = 1, 'CHECK FEHLGESCHLAGEN: Admin kann Foto nicht entfernen';
+
+  -- Aufräumen muss gehen: eigene Dateien und (als Admin) fremde Dateien löschen
+  if v_storage_note = '' then
+    perform pg_temp.mensa_login(v_anna);
+    delete from storage.objects where bucket_id = 'mensa-photos' and name = v_anna || '/check-t.jpg';
+    get diagnostics n = row_count;
+    assert n = 1, 'CHECK FEHLGESCHLAGEN: eigene Fotodatei nicht löschbar';
+    reset role;
+    perform pg_temp.mensa_login(v_admin);
+    delete from storage.objects where bucket_id = 'mensa-photos' and name = v_anna || '/check.jpg';
+    get diagnostics n = row_count;
+    assert n = 1, 'CHECK FEHLGESCHLAGEN: Admin kann fremde Fotodatei nicht löschen';
+    reset role;
+  end if;
 
   select public into v_text from storage.buckets where id = 'mensa-photos';
   assert v_text = 'false', 'CHECK FEHLGESCHLAGEN: Foto-Bucket ist öffentlich';

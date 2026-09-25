@@ -48,6 +48,18 @@ begin
   select string_to_array(name, '/') into _parts;
   return _parts[1:array_length(_parts, 1) - 1];
 end $$;
+-- wie in Supabase: direkte DELETEs auf storage.objects sind gesperrt, außer die Storage-API
+-- (bzw. wer storage.allow_delete_query setzt) löscht – gilt pro Anweisung, auch bei 0 Treffern
+create function storage.protect_delete() returns trigger language plpgsql as $$
+begin
+  if coalesce(current_setting('storage.allow_delete_query', true), 'false') <> 'true' then
+    raise exception 'Direct deletion from storage tables is not allowed. Use the Storage API instead.'
+      using hint = 'This prevents accidental data loss from orphaned objects.', errcode = '42501';
+  end if;
+  return null;
+end $$;
+create trigger protect_objects_delete before delete on storage.objects
+  for each statement execute function storage.protect_delete();
 grant usage on schema storage to anon, authenticated, service_role;
 grant all on storage.objects to anon, authenticated, service_role;
 grant select on storage.buckets to anon, authenticated, service_role;
