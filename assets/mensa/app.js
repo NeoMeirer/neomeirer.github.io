@@ -22,6 +22,7 @@
 
   const TABS = { today: 'heute', entry: 'eintragen', history: 'verlauf', account: 'konto', login: 'anmelden' };
   const MEMBER_TABS = ['today', 'entry', 'history', 'dish'];
+  const UNI_MAIL = /^[^@\s]+@stud\.uni-heidelberg\.de$/i;
 
   const S = {
     user: null, me: { member: false, admin: false, name: null },
@@ -30,7 +31,7 @@
     tab: 'today', dishId: null, highlight: null,
     hist: { q: '', range: '30', date: '', canteen: '', view: 'entries', limit: PAGE },
     form: null,
-    busyVotes: new Set(), uploads: new Map(), fileTarget: null
+    busyVotes: new Set(), uploads: new Map(), fileTarget: null, authMode: 'login'
   };
 
   // ── Helfer ────────────────────────────────────────────────────────────────
@@ -433,7 +434,7 @@
   function renderStatus() {
     let t;
     if (!configured) t = 'Wird gerade eingerichtet';
-    else if (!S.user) t = 'Nur für unsere Mensa-Gruppe';
+    else if (!S.user) t = 'Für Studis der Uni Heidelberg';
     else if (!S.booted && !S.loaded) t = 'Lädt …';
     else if (!S.me.member) t = 'Noch nicht freigeschaltet';
     else if (!S.loaded) t = S.error ? 'Keine Verbindung' : 'Lädt …';
@@ -1138,15 +1139,28 @@
   // ── Konto & Anmeldung ─────────────────────────────────────────────────────
   function renderLogin(panel) {
     if (!configured) return renderUnconfigured(panel);
+    if (S.authMode === 'signup') {
+      panel.innerHTML = `<div class="mr-card mr-pad mr-login"><h2>Konto erstellen</h2>
+        <p class="mr-sub">Für alle mit einer @stud.uni-heidelberg.de-Adresse. Du bekommst einen Bestätigungslink per E-Mail – danach bist du direkt drin.</p>
+        <form data-form="signup" novalidate>
+          <label class="mr-field"><span>Anzeigename (so sehen dich die anderen)</span><input class="mr-input" name="name" maxlength="40" autocomplete="nickname" required></label>
+          <label class="mr-field"><span>Uni-E-Mail</span><input class="mr-input" type="email" name="email" autocomplete="username" placeholder="vorname.nachname@stud.uni-heidelberg.de" required></label>
+          <label class="mr-field"><span>Passwort (mind. 8 Zeichen)</span><input class="mr-input" type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+          <p class="mr-form-error" id="mr-login-error" role="alert"></p>
+          <button class="mr-btn mr-btn-primary mr-btn-block" type="submit">Konto erstellen</button>
+        </form>
+        <p class="mr-hint">Schon ein Konto? <button type="button" class="mr-link" data-action="auth-mode" data-value="login">Anmelden</button></p></div>`;
+      return;
+    }
     panel.innerHTML = `<div class="mr-card mr-pad mr-login"><h2>Anmelden</h2>
-      <p class="mr-sub">Das Mensa-Ranking ist nur für unsere Gruppe. Den Account bekommst du von Neo.</p>
+      <p class="mr-sub">Das Mensa-Ranking ist für Studierende der Uni Heidelberg (@stud.uni-heidelberg.de).</p>
       <form data-form="login">
         <label class="mr-field"><span>E-Mail</span><input class="mr-input" type="email" name="email" autocomplete="username" required></label>
         <label class="mr-field"><span>Passwort</span><input class="mr-input" type="password" name="password" autocomplete="current-password" required></label>
         <p class="mr-form-error" id="mr-login-error" role="alert"></p>
         <button class="mr-btn mr-btn-primary mr-btn-block" type="submit">Anmelden</button>
       </form>
-      <p class="mr-hint">Passwort vergessen? Neo kann es dir neu setzen.</p></div>`;
+      <p class="mr-hint">Neu hier? <button type="button" class="mr-link" data-action="auth-mode" data-value="signup">Konto erstellen</button></p></div>`;
   }
 
   function renderAccount(panel) {
@@ -1163,7 +1177,7 @@
     } else {
       html += `<h2>Noch nicht freigeschaltet</h2>
         <p>Du bist als <strong>${esc(S.user.email)}</strong> angemeldet, aber dieser Account gehört noch nicht zur Mensa-Gruppe.</p>
-        <p class="mr-sub">Schick Neo diese E-Mail-Adresse, damit du freigeschaltet wirst.</p>
+        <p class="mr-sub">Freigeschaltet werden nur Konten mit einer bestätigten @stud.uni-heidelberg.de-Adresse. Hast du den Bestätigungslink in der Mail schon geklickt? Dann unten „Erneut prüfen“. Sonst schick Neo diese Adresse.</p>
         <button type="button" class="mr-btn mr-btn-ghost" data-action="recheck">Erneut prüfen</button>`;
     }
     html += '</div>';
@@ -1197,6 +1211,47 @@
       return;
     }
     await onAuth('SIGNED_IN', res.data.session);
+  }
+
+  async function signup(form) {
+    const fd = new FormData(form);
+    const name = String(fd.get('name')).trim().slice(0, 40);
+    const email = String(fd.get('email')).trim().toLowerCase();
+    const password = String(fd.get('password'));
+    const btn = form.querySelector('[type="submit"]');
+    const errEl = $('#mr-login-error');
+    errEl.textContent = '';
+    if (!name) { errEl.textContent = 'Wie sollen wir dich nennen?'; return; }
+    if (!UNI_MAIL.test(email)) { errEl.textContent = 'Bitte deine @stud.uni-heidelberg.de-Adresse verwenden.'; return; }
+    if (password.length < 8) { errEl.textContent = 'Das Passwort braucht mindestens 8 Zeichen.'; return; }
+    btn.disabled = true;
+    let res;
+    try {
+      res = await withTimeout(sb.auth.signUp({
+        email, password,
+        options: { data: { display_name: name }, emailRedirectTo: location.origin + location.pathname }
+      }));
+    } catch (e) {
+      res = { error: e };
+    }
+    btn.disabled = false;
+    if (res.error) {
+      const msg = String(res.error.message || '');
+      if (/already registered/i.test(msg)) errEl.textContent = 'Für diese Adresse gibt es schon ein Konto – bitte anmelden.';
+      else if (/rate limit|too many/i.test(msg)) errEl.textContent = 'Zu viele Versuche – bitte in ein paar Minuten nochmal.';
+      else if (/password/i.test(msg)) errEl.textContent = 'Das Passwort ist zu schwach – bitte ein längeres wählen.';
+      else errEl.textContent = errText(res.error);
+      return;
+    }
+    if (res.data.user && Array.isArray(res.data.user.identities) && res.data.user.identities.length === 0) {
+      errEl.textContent = 'Für diese Adresse gibt es schon ein Konto – bitte anmelden.';
+      return;
+    }
+    if (res.data.session) return onAuth('SIGNED_IN', res.data.session);
+    form.closest('.mr-login').innerHTML = `<h2>Fast geschafft ✉️</h2>
+      <p>Wir haben einen Bestätigungslink an <strong>${esc(email)}</strong> geschickt. Klick darauf – dann bist du sofort freigeschaltet.</p>
+      <p class="mr-sub">Nichts angekommen? Schau im Spam-Ordner nach oder warte ein paar Minuten.</p>
+      <button type="button" class="mr-btn mr-btn-ghost" data-action="auth-mode" data-value="login">Zur Anmeldung</button>`;
   }
 
   async function changePassword(form) {
@@ -1345,6 +1400,9 @@
         S.hist.limit += PAGE;
         return renderHistResults();
       case 'back': return goBack();
+      case 'auth-mode':
+        S.authMode = t.dataset.value === 'signup' ? 'signup' : 'login';
+        return render();
       case 'logout': return logout();
       case 'recheck':
       case 'reload':
@@ -1383,6 +1441,7 @@
     const kind = form.dataset.form;
     if (kind === 'entry') return submitEntry();
     if (kind === 'login') return login(form);
+    if (kind === 'signup') return signup(form);
     if (kind === 'password') return changePassword(form);
     if (kind === 'edit') return saveEdit(form);
     if (kind === 'rename') return renameDish(form);
